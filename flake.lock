@@ -1,0 +1,68 @@
+{
+  "nodes": {
+    "flake-utils": {
+      "locked": {
+        "lastModified": 1659877975,
+        "narHash": "sha256-zllb8aq3YO3h8B/U0/J1WBgAL8EX5yWf5pMj3G0NAmc=",
+        "owner": "numtide",
+        "repo": "flake-utils",
+        "rev": "c0e246b9b83f637f4681389ecabcb2681b4f3af0",
+        "type": "github"
+      },
+      "original": {
+        "owner": "numtide",
+        "repo": "flake-utils",
+        "type": "github"
+      }
+    },
+    "nixpkgs": {
+      "locked": {
+        "lastModified": 1661187878,
+        "narHash": "sha256-/wCqoQB1BsaVi4nb8Iz0PreeBNMTim0p78NLtyWejFE=",
+        "owner": "nixos",
+        "repo": "nixpkgs",
+        "rev": "52527082ea267fe486f0648582d57c85486b2031",
+        "type": "github"
+      },
+      "original": {
+        "owner": "nixos",
+        "ref": "nixos-22.05",
+        "repo": "nixpkgs",
+        "type": "github"
+      }
+    },
+    "pubmedparser": {
+      "inputs": {
+        "flake-utils": [
+          "flake-utils"
+        ],
+        "nixpkgs": [
+          "nixpkgs"
+        ]
+      },
+      "locked": {
+        "lastModified": 1656430337,
+        "narHash": "sha256-Bn5qopMUfzl2W2hf4eYc4nKJnAqF31mdYpKh3UOCAjI=",
+        "owner": "DavidRConnell",
+        "repo": "pubmedparser",
+        "rev": "73012e7e77865f0ad64970001a75c085d91b0308",
+        "type": "gitlab"
+      },
+      "original": {
+        "owner": "DavidRConnell",
+        "ref": "major-version-1",
+        "repo": "pubmedparser",
+        "type": "gitlab"
+      }
+    },
+    "root": {
+      "inputs": {
+        "flake-utils": "flake-utils",
+        "nixpkgs": "nixpkgs",
+        "pubmedparser": "pubmedparser"
+      }
+    }
+  },
+  "root": "root",
+  "version": 7
+}
