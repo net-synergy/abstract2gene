@@ -7,36 +7,63 @@
       url = "github:numtide/flake-utils";
       inputs.nixpkgs.follows = "nixpkgs";
     };
-    pubmedparser = {
-      url = "gitlab:DavidRConnell/pubmedparser/major-version-1";
+    pubnet = {
+      url = "gitlab:DavidRConnell/pubnet";
+      # url = "/home/voidee/packages/python/pubnet";
       inputs.nixpkgs.follows = "nixpkgs";
       inputs.flake-utils.follows = "flake-utils";
     };
   };
 
-  outputs = { self, nixpkgs, flake-utils, pubmedparser }:
+  outputs = { self, nixpkgs, flake-utils, pubnet }:
     flake-utils.lib.eachDefaultSystem (system:
       let
         pkgs = nixpkgs.legacyPackages.${system};
         python = pkgs.python3;
+        abstract2gene = python.pkgs.buildPythonPackage rec {
+          pname = "abstract2gene";
+          version = "0.1.0";
+          src = ./.;
+          propagatedBuildInputs = [ pubnet.packages.${system}.pubnet ]
+            ++ (with python.pkgs; [ pandas nltk pytest ]);
+          preBuild = ''
+            cat >setup.py <<_EOF_
+            from setuptools import setup
+            setup(
+                name='${pname}',
+                version='${version}',
+                license='MIT',
+                description="Word distributions related to gene symbols",
+                packages={'${pname}'},
+                install_requires=[
+                'pandas',
+                'nltk',
+                'pubnet',
+                ],
+                tests_require=['pytest']
+            )
+            _EOF_
+          '';
+        };
       in {
+        packages.abstract2gene = abstract2gene;
+        defaultPackage = self.packages.${system}.abstract2gene;
         devShell = pkgs.mkShell {
           packages = [
             (python.withPackages (p:
-              with p; [
+              with p;
+              [
                 # development dependencies
                 ipython
-                pytest
                 python-lsp-server
                 pyls-isort
                 python-lsp-black
                 pylsp-mypy
-
-                # runtime dependencies
-                nltk
-              ]))
-            pubmedparser.defaultPackage.${system}
+              ] ++ abstract2gene.propagatedBuildInputs))
           ];
+          shellHook = ''
+            export PYTHONPATH=.
+          '';
         };
       });
 }

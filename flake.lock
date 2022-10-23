@@ -17,11 +17,11 @@
     },
     "nixpkgs": {
       "locked": {
-        "lastModified": 1661187878,
-        "narHash": "sha256-/wCqoQB1BsaVi4nb8Iz0PreeBNMTim0p78NLtyWejFE=",
+        "lastModified": 1666401273,
+        "narHash": "sha256-AG3MoIjcWwz1SPjJ2nymWu4NmeVj9P40OpB1lsmxFtg=",
         "owner": "nixos",
         "repo": "nixpkgs",
-        "rev": "52527082ea267fe486f0648582d57c85486b2031",
+        "rev": "3933d8bb9120573c0d8d49dc5e890cb211681490",
         "type": "github"
       },
       "original": {
@@ -34,18 +34,20 @@
     "pubmedparser": {
       "inputs": {
         "flake-utils": [
+          "pubnet",
           "flake-utils"
         ],
         "nixpkgs": [
+          "pubnet",
           "nixpkgs"
         ]
       },
       "locked": {
-        "lastModified": 1656430337,
-        "narHash": "sha256-Bn5qopMUfzl2W2hf4eYc4nKJnAqF31mdYpKh3UOCAjI=",
+        "lastModified": 1662609176,
+        "narHash": "sha256-wpGQXRiv9bxXLmeQ5hHF3T27u9ojEXPR2TbDKj7Izsk=",
         "owner": "DavidRConnell",
         "repo": "pubmedparser",
-        "rev": "73012e7e77865f0ad64970001a75c085d91b0308",
+        "rev": "de8a682d5b48cb1fb719bf6ff654630737173fb0",
         "type": "gitlab"
       },
       "original": {
@@ -55,11 +57,35 @@
         "type": "gitlab"
       }
     },
+    "pubnet": {
+      "inputs": {
+        "flake-utils": [
+          "flake-utils"
+        ],
+        "nixpkgs": [
+          "nixpkgs"
+        ],
+        "pubmedparser": "pubmedparser"
+      },
+      "locked": {
+        "lastModified": 1666499640,
+        "narHash": "sha256-oGSDhzfofS+fwh0P7qjnp48TMsZ4FFZH4KUoq3AdAEM=",
+        "owner": "DavidRConnell",
+        "repo": "pubnet",
+        "rev": "03b67fd4303afaa5101b870ab33818efe630f21d",
+        "type": "gitlab"
+      },
+      "original": {
+        "owner": "DavidRConnell",
+        "repo": "pubnet",
+        "type": "gitlab"
+      }
+    },
     "root": {
       "inputs": {
         "flake-utils": "flake-utils",
         "nixpkgs": "nixpkgs",
-        "pubmedparser": "pubmedparser"
+        "pubnet": "pubnet"
       }
     }
   },
