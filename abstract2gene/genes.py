@@ -93,7 +93,7 @@ def _wide_to_relational(wide_edges):
                 wide_edges["PublicationId"], wide_edges["GeneSymbol"]
             )
         ),
-        columns=[":START_ID(PublicationId)", ":END_ID(GeneId)"],
+        columns=[":START_ID(Publication)", ":END_ID(Gene)"],
     )
 
     return nodes, edges
