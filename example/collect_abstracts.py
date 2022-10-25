@@ -57,3 +57,4 @@ print(
     "Number of AD related abstracts with gene symbols:"
     f" {n_abstracts_with_symbols}"
 )
+ad_publications.plot_distribution("Gene", "GeneSymbol", threshold=2)
