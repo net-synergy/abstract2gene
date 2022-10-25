@@ -60,4 +60,33 @@ print(
     "Number of AD related abstracts with gene symbols:"
     f" {n_abstracts_with_symbols}"
 )
+
 ad_publications.plot_distribution("Gene", "GeneSymbol", threshold=2)
+
+total_word_freq = a2g.nlp.freq_dist(ad_publications)
+high_freq_words = total_word_freq.most_common(100)
+
+# TODO: set when using larger dataset
+specificity_threshold = 50
+minimum_publications = 3
+
+
+def gene_indices(nodes):
+    dist = ad_publications["Gene", "Publication"].distribution("Gene")
+    return dist > minimum_publications
+
+
+ad_publications = ad_publications.where("Gene", lambda x: gene_indices)
+high_specificity_words = set()
+for gene in ad_publications["Gene"]["GeneSymbol"]:
+    gene_publications = ad_publications.containing("Gene", "GeneSymbol", gene)
+    gene_word_freq = a2g.nlp.freq_dist(
+        gene_publications, exclude=high_freq_words
+    )
+    n_words_ratio = total_word_freq.N() / gene_word_freq.N()
+    for word in gene_word_freq.keys():
+        specificity = n_words_ratio * (
+            gene_word_freq[word] / total_word_freq[word]
+        )
+        if specificity > specificity_threshold:
+            high_specificity_words.add(word)

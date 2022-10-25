@@ -17,11 +17,11 @@
     },
     "nixpkgs": {
       "locked": {
-        "lastModified": 1666401273,
-        "narHash": "sha256-AG3MoIjcWwz1SPjJ2nymWu4NmeVj9P40OpB1lsmxFtg=",
+        "lastModified": 1666528161,
+        "narHash": "sha256-PFOQSC0x4xPD1p/GZIbpKuoEBu6M8HnEOeNRiBUCELA=",
         "owner": "nixos",
         "repo": "nixpkgs",
-        "rev": "3933d8bb9120573c0d8d49dc5e890cb211681490",
+        "rev": "471d92178b978fcbad8db27c2e8a4e737d4e0e27",
         "type": "github"
       },
       "original": {
@@ -68,11 +68,11 @@
         "pubmedparser": "pubmedparser"
       },
       "locked": {
-        "lastModified": 1666499640,
-        "narHash": "sha256-oGSDhzfofS+fwh0P7qjnp48TMsZ4FFZH4KUoq3AdAEM=",
+        "lastModified": 1666679648,
+        "narHash": "sha256-RsAGPG32XwaOIag8mlVoWJxy3xKxydsGeK+/1POHeZ4=",
         "owner": "DavidRConnell",
         "repo": "pubnet",
-        "rev": "03b67fd4303afaa5101b870ab33818efe630f21d",
+        "rev": "96a6f7d7d00e861989e9e810260ee067593bbf5a",
         "type": "gitlab"
       },
       "original": {
