@@ -46,9 +46,8 @@ message(f"Found {n_publications} AD publications in {elapsed_time()}\n")
 
 elapsed_time()
 message("Looking for gene symbols in abstracts.")
-
 # Based on looking at the gene distribution plot
-excluded_genes = ["CA1", "HR", "CA3", "CA4"]
+excluded_genes = ["CA1", "HR", "SCD", "LBP", "CA3", "CA4", "CBS", "GC", "STAR"]
 ad_publications = a2g.genes.attach(ad_publications, exclude=excluded_genes)
 n_abstracts_with_symbols = ad_publications["Publication", "Gene"].shape[0]
 message(
