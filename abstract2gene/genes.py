@@ -8,12 +8,20 @@ from .nlp import tokenize
 symbols = gene_symbols()
 
 
-def attach(net):
+def attach(net, exclude=None):
     """Parse abstracts to find genes related to publications and add the genes
-    as a new graph in the network."""
+    as a new graph in the network.
+
+    Arguments
+    ---------
+    net : PubNet, the publication network to parse.
+    exculde : list, optional list of genes to exclude from search.
+    """
 
     abstracts = net["Abstract"]
-    gene_list = _collect_abstract_gene_symbols(abstracts)
+    gene_symbols = [sym for sym in symbols if sym not in exclude]
+
+    gene_list = _collect_abstract_gene_symbols(abstracts, gene_symbols)
     wide_edges = _gene_publication_edges(net, gene_list)
     gene_nodes, gene_edges = _wide_to_relational(wide_edges)
 
@@ -25,17 +33,22 @@ def attach(net):
     return net
 
 
-def _collect_genes(abstract):
+def _collect_genes(args):
+    abstract, gene_symbols = args
     words = tokenize(abstract)
-    return list(filter(lambda w: w in symbols, set(words)))
+    return [w for w in set(words) if w in gene_symbols]
 
 
-def _collect_abstract_gene_symbols(abstracts):
+def _collect_abstract_gene_symbols(abstracts, gene_symbols):
+    args = (
+        (abstract, gene_symbols)
+        for abstract in abstracts["AbstractText"].array
+    )
     with concurrent.futures.ProcessPoolExecutor() as executor:
         abstract_genes = list(
             executor.map(
                 _collect_genes,
-                abstracts["AbstractText"].array,
+                args,
             )
         )
     return zip(abstracts["AbstractId"].array, abstract_genes)
