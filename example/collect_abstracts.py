@@ -3,6 +3,7 @@ import time
 from functools import reduce
 
 import abstract2gene as a2g
+import nltk
 from pubnet import from_dir
 
 
@@ -67,20 +68,20 @@ high_freq_words = total_word_freq.most_common(100)
 
 # TODO: set when using larger dataset
 specificity_threshold = 50
-minimum_publications = 3
+minimum_occurances = 3
 
 
 def gene_indices(nodes):
     dist = ad_publications["Gene", "Publication"].distribution("Gene")
-    return dist > minimum_publications
+    return dist > minimum_occurances
 
 
-ad_publications = ad_publications.where("Gene", lambda x: gene_indices)
+ad_publications = ad_publications.where("Gene", gene_indices)
 high_specificity_words = set()
 for gene in ad_publications["Gene"]["GeneSymbol"]:
     gene_publications = ad_publications.containing("Gene", "GeneSymbol", gene)
     gene_word_freq = a2g.nlp.freq_dist(
-        gene_publications, exclude=high_freq_words
+        gene_publications, exclude=(high_freq_words + [gene.lower()])
     )
     n_words_ratio = total_word_freq.N() / gene_word_freq.N()
     for word in gene_word_freq.keys():
@@ -89,3 +90,21 @@ for gene in ad_publications["Gene"]["GeneSymbol"]:
         )
         if specificity > specificity_threshold:
             high_specificity_words.add(word)
+
+features = []
+for pub_id in ad_publications["Publication"]["PublicationId"]:
+    abstract_net = ad_publications[pub_id]
+    # Many abstracts are broken into parts
+    full_abstract = " ".join(abstract_net["Abstract"]["AbstractText"].array)
+    # Need model that can accept multiple genes
+    labels = abstract_net["Gene"]["GeneSymbol"].array[0]
+    features.append(
+        (
+            a2g.model.abstract_features(full_abstract, high_specificity_words),
+            labels,
+        )
+    )
+
+classifier = nltk.NaiveBayesClassifier.train(features[:100])
+nltk.classify.accuracy(classifier, features[100:])
+classifier.show_most_informative_features(20)
