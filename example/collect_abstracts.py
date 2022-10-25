@@ -81,7 +81,7 @@ high_specificity_words = set()
 for gene in ad_publications["Gene"]["GeneSymbol"]:
     gene_publications = ad_publications.containing("Gene", "GeneSymbol", gene)
     gene_word_freq = a2g.nlp.freq_dist(
-        gene_publications, exclude=(high_freq_words + [gene.lower()])
+        gene_publications, exclude=(high_freq_words)
     )
     n_words_ratio = total_word_freq.N() / gene_word_freq.N()
     for word in gene_word_freq.keys():
