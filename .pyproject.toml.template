@@ -1,0 +1,26 @@
+#!/usr/bin/env bash
+
+cat >pyproject.toml <<_EOF_
+[tool.black]
+line-length = 79
+preview = true
+
+[tool.poetry]
+name = "$pname"
+version = "$version"
+description = "$description"
+license = "$license"
+authors = [
+    $authors,
+]
+packages = [
+    { include = "$pname" },
+]
+
+[tool.poetry.dependencies]
+$dependencies
+
+[build-system]
+requires = ["poetry-core>=1.0.0"]
+build-backend = "poetry.core.masonry.api"
+_EOF_
