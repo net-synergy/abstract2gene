@@ -43,9 +43,24 @@
               else
                 ''\"^${major}.${minor}\"'';
             in pname + " = " + version) list);
+        nixDockerImage = pkgs.dockerTools.buildImage {
+          name = "abstract2gene";
+          tag = "nix";
+          config = { Env = [ "PYTHONPATH=/abstract2gene" ]; };
+          contents = [
+            (python.withPackages
+              (p: abstract2gene.propagatedBuildInputs ++ [ p.ipython ]))
+            (pkgs.buildEnv {
+              name = "image-root";
+              pathsToLink = [ "/bin" ];
+              paths = [ pkgs.bash pkgs.coreutils ];
+            })
+          ];
+        };
       in {
         packages.abstract2gene = abstract2gene;
         packages.default = self.packages.${system}.abstract2gene;
+        packages.dockerImage = nixDockerImage;
         devShells.default = pkgs.mkShell {
           packages = [
             (python.withPackages (p:
@@ -76,6 +91,15 @@
                dependencies="${
                  nix2poetryDependency abstract2gene.propagatedBuildInputs
                }" ./.pyproject.toml.template
+            fi
+
+            if [ ! -f devShell.sh ]; then
+               echo "#!/usr/bin/env bash" > devShell.sh
+               echo "" >> devShell.sh
+               echo "cd \$(dirname \$0)" >> devShell.sh
+               echo "" >> devShell.sh
+               echo "docker run --rm -v \$(pwd):\$HOME -w \$HOME -it abstract2gene:nix ipython" >> devShell.sh
+               chmod +x devShell.sh
             fi
           '';
         };
