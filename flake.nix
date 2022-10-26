@@ -47,8 +47,8 @@
         };
       in {
         packages.abstract2gene = abstract2gene;
-        defaultPackage = self.packages.${system}.abstract2gene;
-        devShell = pkgs.mkShell {
+        packages.default = self.packages.${system}.abstract2gene;
+        devShells.default = pkgs.mkShell {
           packages = [
             (python.withPackages (p:
               with p;
