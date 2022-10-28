@@ -27,7 +27,7 @@
           format = "pyproject";
           buildInputs = (with python.pkgs; [ poetry ]);
           propagatedBuildInputs = [ pubnet.packages.${system}.pubnet ]
-            ++ (with python.pkgs; [ pandas nltk ]);
+            ++ (with python.pkgs; [ pandas nltk requests ]);
           authors = [ "David Connell <davidconnell12@gmail.com>" ];
           checkPhase = "";
         };

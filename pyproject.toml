@@ -18,6 +18,7 @@ packages = [
 pubnet = "^0.3"
 pandas = "^1.4"
 nltk = "^3.7"
+requests = "^2.27"
 python = "~3.9"
 
 [build-system]
