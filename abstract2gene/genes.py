@@ -5,8 +5,6 @@ import pandas as pd
 from .data.hgnc import gene_symbols
 from .nlp import tokenize
 
-symbols = gene_symbols()
-
 
 def attach(net, exclude=None):
     """Parse abstracts to find genes related to publications and add the genes
@@ -19,9 +17,9 @@ def attach(net, exclude=None):
     """
 
     abstracts = net["Abstract"]
-    gene_symbols = [sym for sym in symbols if sym not in exclude]
+    symbols = [sym for sym in gene_symbols() if sym not in exclude]
 
-    gene_list = _collect_abstract_gene_symbols(abstracts, gene_symbols)
+    gene_list = _collect_abstract_gene_symbols(abstracts, symbols)
     wide_edges = _gene_publication_edges(net, gene_list)
     gene_nodes, gene_edges = _wide_to_relational(wide_edges)
 
@@ -34,15 +32,14 @@ def attach(net, exclude=None):
 
 
 def _collect_genes(args):
-    abstract, gene_symbols = args
+    abstract, symbols = args
     words = tokenize(abstract)
-    return [w for w in set(words) if w in gene_symbols]
+    return [w for w in set(words) if w in symbols]
 
 
-def _collect_abstract_gene_symbols(abstracts, gene_symbols):
+def _collect_abstract_gene_symbols(abstracts, symbols):
     args = (
-        (abstract, gene_symbols)
-        for abstract in abstracts["AbstractText"].array
+        (abstract, symbols) for abstract in abstracts["AbstractText"].array
     )
     with concurrent.futures.ProcessPoolExecutor() as executor:
         abstract_genes = list(

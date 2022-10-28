@@ -27,7 +27,7 @@
           format = "pyproject";
           buildInputs = (with python.pkgs; [ poetry ]);
           propagatedBuildInputs = [ pubnet.packages.${system}.pubnet ]
-            ++ (with python.pkgs; [ pandas nltk ]);
+            ++ (with python.pkgs; [ pandas nltk requests ]);
           authors = [ "David Connell <davidconnell12@gmail.com>" ];
           checkPhase = "";
         };
@@ -46,7 +46,13 @@
         nixDockerImage = pkgs.dockerTools.buildImage {
           name = "abstract2gene";
           tag = "nix";
-          config = { Env = [ "PYTHONPATH=/abstract2gene" ]; };
+          config = {
+            Env = [
+              "HOME=/home/docker"
+              "XDG_DATA_HOME=/home/docker/.local/share"
+              "XDG_CACHE_HOME=/home/docker/.cache"
+            ];
+          };
           contents = [
             (python.withPackages
               (p: abstract2gene.propagatedBuildInputs ++ [ p.ipython ]))
@@ -98,7 +104,7 @@
                echo "" >> devShell.sh
                echo "cd \$(dirname \$0)" >> devShell.sh
                echo "" >> devShell.sh
-               echo "docker run --rm -v \$(pwd):\$HOME -w \$HOME -it abstract2gene:nix ipython" >> devShell.sh
+               echo "docker run --rm -v \$(pwd):/home/docker/package -v \$XDG_DATA_HOME:/home/docker/.local/share -v \$XDG_CACHE_HOME:/home/docker/.cache -w /home/docker/package -it abstract2gene:nix ipython" >> devShell.sh
                chmod +x devShell.sh
             fi
           '';
