@@ -2,6 +2,9 @@
 line-length = 79
 preview = true
 
+[tool.mypy]
+ignore_missing_imports = true
+
 [tool.poetry]
 name = "abstract2gene"
 version = "0.1.0"
