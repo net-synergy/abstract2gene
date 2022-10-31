@@ -85,7 +85,31 @@
       "inputs": {
         "flake-utils": "flake-utils",
         "nixpkgs": "nixpkgs",
-        "pubnet": "pubnet"
+        "pubnet": "pubnet",
+        "vim": "vim"
+      }
+    },
+    "vim": {
+      "inputs": {
+        "flake-utils": [
+          "flake-utils"
+        ],
+        "nixpkgs": [
+          "nixpkgs"
+        ]
+      },
+      "locked": {
+        "lastModified": 1667188387,
+        "narHash": "sha256-yuiVjVc7UwBMzMuDXTNjtm9SiiFHIRX2+kTU313mpbw=",
+        "owner": "DavidRConnell",
+        "repo": "vim-container",
+        "rev": "ca71903d735df2adbcd46b0b848e7ec01e5ad698",
+        "type": "gitlab"
+      },
+      "original": {
+        "owner": "DavidRConnell",
+        "repo": "vim-container",
+        "type": "gitlab"
       }
     }
   },

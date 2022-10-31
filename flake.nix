@@ -13,9 +13,14 @@
       inputs.nixpkgs.follows = "nixpkgs";
       inputs.flake-utils.follows = "flake-utils";
     };
+    vim = {
+      url = "gitlab:DavidRConnell/vim-container";
+      inputs.nixpkgs.follows = "nixpkgs";
+      inputs.flake-utils.follows = "flake-utils";
+    };
   };
 
-  outputs = { self, nixpkgs, flake-utils, pubnet }:
+  outputs = { self, nixpkgs, flake-utils, pubnet, vim }:
     flake-utils.lib.eachDefaultSystem (system:
       let
         pkgs = nixpkgs.legacyPackages.${system};
@@ -46,20 +51,28 @@
         nixDockerImage = pkgs.dockerTools.buildImage {
           name = "abstract2gene";
           tag = "nix";
+          fromImage = vim.packages.${system}.dockerImage;
           config = {
             Env = [
               "HOME=/home/docker"
               "XDG_DATA_HOME=/home/docker/.local/share"
               "XDG_CACHE_HOME=/home/docker/.cache"
+              "XDG_CONFIG_HOME=/home/docker/.config"
             ];
           };
           contents = [
-            (python.withPackages
-              (p: abstract2gene.propagatedBuildInputs ++ [ p.ipython ]))
+            (python.withPackages (p:
+              abstract2gene.propagatedBuildInputs ++ (with p; [
+                ipython
+                python-lsp-server
+                pyls-isort
+                python-lsp-black
+                pylsp-mypy
+              ])))
             (pkgs.buildEnv {
               name = "image-root";
               pathsToLink = [ "/bin" ];
-              paths = [ pkgs.bash pkgs.coreutils ];
+              paths = [ pkgs.bash pkgs.coreutils pkgs.tmux ];
             })
           ];
         };
