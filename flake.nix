@@ -72,7 +72,7 @@
             (pkgs.buildEnv {
               name = "image-root";
               pathsToLink = [ "/bin" ];
-              paths = [ pkgs.bash pkgs.coreutils pkgs.tmux ];
+              paths = [ pkgs.bashInteractive pkgs.coreutils pkgs.tmux ];
             })
           ];
         };
