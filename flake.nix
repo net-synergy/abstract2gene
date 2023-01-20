@@ -2,11 +2,8 @@
   description = "Word distributions related to gene symbols";
 
   inputs = {
-    nixpkgs.url = "github:nixos/nixpkgs/nixos-22.05";
-    flake-utils = {
-      url = "github:numtide/flake-utils";
-      inputs.nixpkgs.follows = "nixpkgs";
-    };
+    nixpkgs.url = "github:nixos/nixpkgs/nixos-22.11";
+    flake-utils = { url = "github:numtide/flake-utils"; };
     pubnet = {
       url = "gitlab:DavidRConnell/pubnet";
       # url = "/home/voidee/packages/python/pubnet";
