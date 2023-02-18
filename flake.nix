@@ -5,8 +5,7 @@
     nixpkgs.url = "github:nixos/nixpkgs/nixos-22.11";
     flake-utils = { url = "github:numtide/flake-utils"; };
     pubnet = {
-      url = "gitlab:DavidRConnell/pubnet";
-      # url = "/home/voidee/packages/python/pubnet";
+      url = "gitlab:net-synergy/pubnet";
       inputs.nixpkgs.follows = "nixpkgs";
       inputs.flake-utils.follows = "flake-utils";
     };

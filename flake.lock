@@ -68,14 +68,17 @@
         "pubmedparser": "pubmedparser"
       },
       "locked": {
-        "lastModified": 1670527100,
-        "narHash": "sha256-zTZZ33jUZU/TS+K8emmyFKSpiJuD+oWSrt7Nl8nu+u0=",
-        "type": "git",
-        "url": "file:///home/voidee/packages/python/pubnet"
+        "lastModified": 1675370930,
+        "narHash": "sha256-YaTbMwOzUZtLAlCts4oz44+HBsEAp9eP/aPJEnz+cUM=",
+        "owner": "net-synergy",
+        "repo": "pubnet",
+        "rev": "76e25478cfa5668e7fe45978605dd455f8c0e2c5",
+        "type": "gitlab"
       },
       "original": {
-        "type": "git",
-        "url": "file:///home/voidee/packages/python/pubnet"
+        "owner": "net-synergy",
+        "repo": "pubnet",
+        "type": "gitlab"
       }
     },
     "root": {
