@@ -2,11 +2,11 @@
   "nodes": {
     "flake-utils": {
       "locked": {
-        "lastModified": 1667395993,
-        "narHash": "sha256-nuEHfE/LcWyuSWnS8t12N1wc105Qtau+/OdUAjtQ0rA=",
+        "lastModified": 1678901627,
+        "narHash": "sha256-U02riOqrKKzwjsxc/400XnElV+UtPUQWpANPlyazjH0=",
         "owner": "numtide",
         "repo": "flake-utils",
-        "rev": "5aed5285a952e0b949eb3ba02c12fa4fcfef535f",
+        "rev": "93a2b84fc4b70d9e089d029deacc3583435c2ed6",
         "type": "github"
       },
       "original": {
@@ -17,11 +17,11 @@
     },
     "nixpkgs": {
       "locked": {
-        "lastModified": 1673957332,
-        "narHash": "sha256-njH7Szk1BLVWGMw7IRibgGejSlxXHj9saZHfH20gHdk=",
+        "lastModified": 1679748960,
+        "narHash": "sha256-BP8XcYHyj1NxQi04RpyNW8e7KiXSoI+Fy1tXIK2GfdA=",
         "owner": "nixos",
         "repo": "nixpkgs",
-        "rev": "b83e7f5a04a3acc8e92228b0c4bae68933d504eb",
+        "rev": "da26ae9f6ce2c9ab380c0f394488892616fc5a6a",
         "type": "github"
       },
       "original": {
@@ -31,61 +31,10 @@
         "type": "github"
       }
     },
-    "pubmedparser": {
-      "inputs": {
-        "flake-utils": [
-          "pubnet",
-          "flake-utils"
-        ],
-        "nixpkgs": [
-          "pubnet",
-          "nixpkgs"
-        ]
-      },
-      "locked": {
-        "lastModified": 1662609176,
-        "narHash": "sha256-wpGQXRiv9bxXLmeQ5hHF3T27u9ojEXPR2TbDKj7Izsk=",
-        "owner": "DavidRConnell",
-        "repo": "pubmedparser",
-        "rev": "de8a682d5b48cb1fb719bf6ff654630737173fb0",
-        "type": "gitlab"
-      },
-      "original": {
-        "owner": "DavidRConnell",
-        "ref": "major-version-1",
-        "repo": "pubmedparser",
-        "type": "gitlab"
-      }
-    },
-    "pubnet": {
-      "inputs": {
-        "flake-utils": [
-          "flake-utils"
-        ],
-        "nixpkgs": [
-          "nixpkgs"
-        ],
-        "pubmedparser": "pubmedparser"
-      },
-      "locked": {
-        "lastModified": 1675370930,
-        "narHash": "sha256-YaTbMwOzUZtLAlCts4oz44+HBsEAp9eP/aPJEnz+cUM=",
-        "owner": "net-synergy",
-        "repo": "pubnet",
-        "rev": "76e25478cfa5668e7fe45978605dd455f8c0e2c5",
-        "type": "gitlab"
-      },
-      "original": {
-        "owner": "net-synergy",
-        "repo": "pubnet",
-        "type": "gitlab"
-      }
-    },
     "root": {
       "inputs": {
         "flake-utils": "flake-utils",
         "nixpkgs": "nixpkgs",
-        "pubnet": "pubnet",
         "vim": "vim"
       }
     },
