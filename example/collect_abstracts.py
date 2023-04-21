@@ -7,11 +7,13 @@ import abstract2gene.genes
 import abstract2gene.model
 import abstract2gene.nlp
 import nltk
-from pubnet import from_dir
 import pubnet
+from pubnet import from_dir
 
 print(pubnet.data.default_data_dir())
 abstract2gene.data.download("gene_symbols")
+
+
 def message(*args):
     print(*args, file=sys.stderr)
 
@@ -55,7 +57,9 @@ elapsed_time()
 message("Looking for gene symbols in abstracts.")
 # Based on looking at the gene distribution plot
 excluded_genes = ["CA1", "HR", "SCD", "LBP", "CA3", "CA4", "CBS", "GC", "STAR"]
-ad_publications = abstract2gene.genes.attach(ad_publications, exclude=excluded_genes)
+ad_publications = abstract2gene.genes.attach(
+    ad_publications, exclude=excluded_genes
+)
 n_abstracts_with_symbols = ad_publications["Publication", "Gene"].shape[0]
 message(
     f"Found {n_abstracts_with_symbols} AD abstracts with gene symbols in"
@@ -108,7 +112,9 @@ for pub_id in ad_publications["Publication"]["PublicationId"]:
     labels = abstract_net["Gene"]["GeneSymbol"].array[0]
     features.append(
         (
-            abstract2gene.model.abstract_features(full_abstract, high_specificity_words),
+            abstract2gene.model.abstract_features(
+                full_abstract, high_specificity_words
+            ),
             labels,
         )
     )
