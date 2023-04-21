@@ -3,10 +3,7 @@ import sys
 import time
 from functools import reduce
 
-import abstract2gene.data
-import abstract2gene.genes
-import abstract2gene.model
-import abstract2gene.nlp
+import abstract2gene as a2g
 import matplotlib.pyplot as plt
 import nltk
 import numpy as np
@@ -15,9 +12,6 @@ from nltk.corpus import stopwords
 from pubnet import from_dir
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.metrics.pairwise import cosine_similarity
-
-# print(pubnet.data.default_data_dir())
-# abstract2gene.data.download("gene_symbols")
 
 
 def message(*args):
@@ -77,11 +71,11 @@ def get_AD_Publications_With_Genes(net):
         "GC",
         "STAR",
     ]
-    ad_publications = abstract2gene.genes.attach(
+    ad_publications = a2g.genes.attach(
         ad_publications, exclude=excluded_genes
     )
 
-    total_word_freq = abstract2gene.nlp.freq_dist(ad_publications)
+    total_word_freq = a2g.nlp.freq_dist(ad_publications)
     high_freq_words = total_word_freq.most_common(100)
 
     # TODO: set when using larger dataset
@@ -105,7 +99,7 @@ def get_Embeddings(ss_net, ad_net):
     abstracts = np.concatenate((ss_abstracts, gen_abstracts))
 
     tokenizer = functools.partial(
-        abstract2gene.nlp.getTokens, exclude=stopwords.words("english")
+        a2g.nlp.getTokens, exclude=stopwords.words("english")
     )
 
     vectorizer = TfidfVectorizer(tokenizer=tokenizer, token_pattern=None)
@@ -117,7 +111,7 @@ def get_Embeddings(ss_net, ad_net):
 
 def get_Embedding_From_Documents(abstracts):
     tokenizer = functools.partial(
-        abstract2gene.nlp.getTokens, exclude=stopwords.words("english")
+        a2g.nlp.getTokens, exclude=stopwords.words("english")
     )
 
     vectorizer = TfidfVectorizer(tokenizer=tokenizer, token_pattern=None)
@@ -165,7 +159,7 @@ if __name__ == "__main__":
     nltk.download("stopwords")
 
     ss_publications = get_SS_Publications(publications)
-    ss_freq_dist = abstract2gene.nlp.freq_dist(
+    ss_freq_dist = a2g.nlp.freq_dist(
         ss_publications, exclude=stopwords.words("english")
     )
     most_common = ss_freq_dist.most_common(50)
@@ -237,10 +231,10 @@ if __name__ == "__main__":
     # print(scores)
 
     # message("Social Science tokens for first abstract:")
-    # tok = abstract2gene.nlp.getTokens(ss_publications["Abstract"]["AbstractText"].array[0], exclude=stopwords.words('english'))
+    # tok = a2g.nlp.getTokens(ss_publications["Abstract"]["AbstractText"].array[0], exclude=stopwords.words('english'))
     # print(tok)
 
     # nltk.download('stopwords')
-    # total_word_freq = abstract2gene.nlp.freq_dist(ss_publications, exclude=stopwords.words('english'))
+    # total_word_freq = a2g.nlp.freq_dist(ss_publications, exclude=stopwords.words('english'))
     # highest_freq = total_word_freq.most_common(1000)
     # print(highest_freq)

@@ -2,16 +2,10 @@ import sys
 import time
 from functools import reduce
 
-import abstract2gene.data
-import abstract2gene.genes
-import abstract2gene.model
-import abstract2gene.nlp
+import abstract2gene as a2g
 import nltk
 import pubnet
 from pubnet import from_dir
-
-print(pubnet.data.default_data_dir())
-abstract2gene.data.download("gene_symbols")
 
 
 def message(*args):
@@ -57,9 +51,7 @@ elapsed_time()
 message("Looking for gene symbols in abstracts.")
 # Based on looking at the gene distribution plot
 excluded_genes = ["CA1", "HR", "SCD", "LBP", "CA3", "CA4", "CBS", "GC", "STAR"]
-ad_publications = abstract2gene.genes.attach(
-    ad_publications, exclude=excluded_genes
-)
+ad_publications = a2g.genes.attach(ad_publications, exclude=excluded_genes)
 n_abstracts_with_symbols = ad_publications["Publication", "Gene"].shape[0]
 message(
     f"Found {n_abstracts_with_symbols} AD abstracts with gene symbols in"
@@ -75,7 +67,7 @@ ad_publications.plot_distribution("Gene", "GeneSymbol", threshold=2)
 
 print(ad_publications)
 
-total_word_freq = abstract2gene.nlp.freq_dist(ad_publications)
+total_word_freq = a2g.nlp.freq_dist(ad_publications)
 high_freq_words = total_word_freq.most_common(100)
 
 # TODO: set when using larger dataset
@@ -92,7 +84,7 @@ ad_publications = ad_publications.where("Gene", gene_indices)
 high_specificity_words = set()
 for gene in ad_publications["Gene"]["GeneSymbol"]:
     gene_publications = ad_publications.containing("Gene", "GeneSymbol", gene)
-    gene_word_freq = abstract2gene.nlp.freq_dist(
+    gene_word_freq = a2g.nlp.freq_dist(
         gene_publications, exclude=(high_freq_words)
     )
     n_words_ratio = total_word_freq.N() / gene_word_freq.N()
@@ -112,9 +104,7 @@ for pub_id in ad_publications["Publication"]["PublicationId"]:
     labels = abstract_net["Gene"]["GeneSymbol"].array[0]
     features.append(
         (
-            abstract2gene.model.abstract_features(
-                full_abstract, high_specificity_words
-            ),
+            a2g.model.abstract_features(full_abstract, high_specificity_words),
             labels,
         )
     )
