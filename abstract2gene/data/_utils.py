@@ -1,55 +1,39 @@
 import os
-import sys
 
+import appdirs
 from abstract2gene import __name__ as pkg_name
 
+_APPAUTHOR = "net_synergy"
 
-def default_cache_dir():
+
+def default_cache_dir() -> str:
     """Find the default location to save cache files.
+
+    If the directory does not exist it is created.
 
     Cache files are specifically files that can be easily reproduced,
     i.e. those that can be downloaded from the internet.
     """
 
-    if sys.platform.startswith("win"):
-        try:
-            cache_home = os.environ["LOCALAPPDATA"]
-        except KeyError as err:
-            raise EnvironmentError(
-                "Location for local app data is not set.",
-                "Explicitely set cache directory to get around error.",
-            ) from err
-    else:
-        try:
-            cache_home = os.environ["XDG_CACHE_HOME"]
-        except KeyError:
-            home = os.environ["HOME"]
-            return os.path.join(home, pkg_name, "cache")
+    cache_dir = appdirs.user_cache_dir(pkg_name, _APPAUTHOR)
+    if not os.path.exists(cache_dir):
+        os.mkdir(cache_dir, mode=0o755)
 
-    return os.path.join(cache_home, pkg_name)
+    return cache_dir
 
 
-def default_data_dir():
+def default_data_dir() -> str:
     """Find the default location to save data files.
+
+    If the directory does not exist it is created.
 
     Data files are files created by a user. It's possible they can be
     reproduced by rerunning the script that produced them but there is
     no gurentee they can be perfectly reproduced.
     """
 
-    if sys.platform.startswith("win"):
-        try:
-            data_home = os.environ["APPDATA"]
-        except KeyError as err:
-            raise EnvironmentError(
-                "Location for app data is not set.",
-                "Explicitely set cache directory to get around error.",
-            ) from err
-    else:
-        try:
-            data_home = os.environ["XDG_DATA_HOME"]
-        except KeyError:
-            home = os.environ["HOME"]
-            return os.path.join(home, pkg_name, "share")
+    data_dir = appdirs.user_data_dir(pkg_name, _APPAUTHOR)
+    if not os.path.exists(data_dir):
+        os.mkdir(data_dir, mode=0o755)
 
-    return os.path.join(data_home, pkg_name)
+    return data_dir
