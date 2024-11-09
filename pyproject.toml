@@ -1,3 +1,29 @@
+[tool.poetry]
+name = "abstract2gene"
+version = "0.1.0"
+description = "Word distributions related to gene symbols"
+license = "MIT"
+repository = "https://github.com/net-synergy/abstract2gene"
+authors = ["David Connell <davidconnell12@gmail.com>"]
+packages = [{ include = "abstract2gene" }]
+
+[tool.poetry.dependencies]
+python = "^3.10"
+pubnet = "^0.6.2"
+pandas = "^1.4"
+nltk = "^3.7"
+requests = "^2.28"
+appdirs = "^1.4.4"
+
+[tool.poetry.group.dev.dependencies]
+ipython = "^8.16.1"
+black = "^22.10"
+isort = "^5.12.0"
+python-lsp-server = "^1.8.0"
+pydocstyle = "^6.3.0"
+pylsp-mypy = "^0.6.7"
+python-lsp-ruff = "^1.5.2"
+
 [tool.black]
 line-length = 79
 preview = true
@@ -5,23 +31,19 @@ preview = true
 [tool.mypy]
 ignore_missing_imports = true
 
-[tool.poetry]
-name = "abstract2gene"
-version = "0.1.0"
-description = "Word distributions related to gene symbols"
-license = "MIT"
-repository = "https://gitlab.com/net-synergy/abstract2gene"
-authors = ["David Connell <davidconnell12@gmail.com>"]
-packages = [{ include = "abstract2gene" }]
+[tool.pylsp-mypy]
+enabled = true
+live_mode = false
+dmypy = true
 
-[tool.poetry.dependencies]
-python = "^3.8"
-pubnet = "^0.6.2"
-pandas = "^1.4"
-nltk = "^3.7"
-requests = "^2.28"
-appdirs = "^1.4.4"
+[tool.isort]
+profile = "black"
+
+[tool.ruff]
+line-length = 79
+ignore = ["E203"]
+select = ["A", "C", "D", "E", "F", "N", "RET", "SIM"]
 
 [build-system]
-requires = ["poetry-core>=1.0.0"]
+requires = ["poetry-core"]
 build-backend = "poetry.core.masonry.api"
