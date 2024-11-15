@@ -20,7 +20,6 @@ _file_template = "hgnc_complete_set_{year}-{month}-01.txt"
 
 def gene_symbols():
     """Return a list of gene symbols from HGNC."""
-
     gene_file = _find_gene_file()
     genes = pd.read_csv(gene_file, delimiter="\t", dtype=np.str_)
     return genes["symbol"].values
@@ -63,21 +62,24 @@ def _most_recent_cached_file(data_dir):
     )
 
 
-def download_gene_symbols(data_dir=default_cache_dir()):
+def download_gene_symbols(data_dir: str | None = None) -> None:
     """Download HGNC's set of genes.
 
     If a file has already been downloaded, it will check if there's a newer
     version from the remote database and replace if there is.
 
-    Arguments
-    ---------
-    data_dir : where to store the file (defaults to `default_cache_dir`)
+    Parameters
+    ----------
+    data_dir : optional str
+        Where to store the file (defaults to `default_cache_dir`).
 
-    See also
+    See Also
     --------
     `abstract2gene.data.download` for a central download API for the package.
     `abstract2gene.data.default_cache_dir`
+
     """
+    data_dir = data_dir or default_cache_dir()
 
     last_update = _latest_gene_symbol_update()
     latest_file = _file_template.format(
@@ -105,8 +107,6 @@ def download_gene_symbols(data_dir=default_cache_dir()):
     r = requests.get(os.path.join(_base_url, latest_file))
     with open(local_path, "wb") as f:
         f.write(r.content)
-
-    return
 
 
 def _latest_gene_symbol_update():

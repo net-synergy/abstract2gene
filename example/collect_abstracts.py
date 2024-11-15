@@ -2,10 +2,11 @@ import sys
 import time
 from functools import reduce
 
-import abstract2gene as a2g
 import nltk
 import pubnet
 from pubnet import from_dir
+
+import abstract2gene as a2g
 
 
 def message(*args):
@@ -26,8 +27,6 @@ def elapsed_time_factory():
 
 elapsed_time = elapsed_time_factory()
 
-# NOTE: graphs headers manually changed, see pubmedparser issue #6
-data_dir = "/mnt/c/Users/georgs2/pubnet/share"
 nodes = ("Abstract", "Descriptor", "Chemical", "Publication")
 edges = (
     ("Publication", "Abstract"),
@@ -36,7 +35,7 @@ edges = (
 )
 
 message("Loading network")
-publications = from_dir("Publication", nodes, edges, data_dir=data_dir)
+publications = from_dir("Publication", nodes, edges)
 message(f"Network loaded in {elapsed_time()}\n")
 
 message("Finding AD publications")

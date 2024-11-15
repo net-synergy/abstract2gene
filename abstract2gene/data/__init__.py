@@ -1,30 +1,37 @@
-from ._utils import default_cache_dir, default_data_dir
-from .hgnc import download_gene_symbols
+from ._utils import default_cache_dir
+from .hgnc import download_gene_symbols as download_hgnc_gene_symbols
+from .pubtator import download_gene_edges as download_gene_edges
 
 __all__ = ["default_cache_dir", "default_data_dir", "download"]
 
 
-def download(content, data_dir=default_cache_dir()):
-    """Download content from online DB
+def download(content, data_dir=None):
+    """Download content from online DB.
 
     If content already downloaded, checks for newer version and, if local files
     are outdated, downloads files. If local content is up-to-date, does
     nothing.
 
-    Arguments
-    ---------
-    content : str { "gene_symbols" }, the name of the content to download.
-    data_dir : str, where to download and check for content. Uses
-        `default_cache_dir` by default.
+    Parameters
+    ----------
+    content : str { "hgnc_genes", "pubattor_genes" }
+        The name of the content to download.
+    data_dir : optional str
+        Where to download and check for content. Uses `default_cache_dir` by
+        default.
 
     Returns
     -------
     None
 
-    See also
+    See Also
     --------
     `abstract2gene.data.default_cache_dir`
-    """
 
-    downloaders = {"gene_symbols": download_gene_symbols}
-    downloaders[content](data_dir)
+    """
+    downloaders = {
+        "hgnc_genes": download_hgnc_gene_symbols,
+        "pubmed_genes": lambda _dir: download_gene_edges("pubmed", _dir),
+        "pubtator_genes": lambda _dir: download_gene_edges("pubtator", _dir),
+    }
+    downloaders[content](data_dir or default_cache_dir())

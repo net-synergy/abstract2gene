@@ -3,15 +3,15 @@ import sys
 import time
 from functools import reduce
 
-import abstract2gene as a2g
 import matplotlib.pyplot as plt
 import nltk
 import numpy as np
-import pubnet
 from nltk.corpus import stopwords
 from pubnet import from_dir
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.metrics.pairwise import cosine_similarity
+
+import abstract2gene as a2g
 
 
 def message(*args):
@@ -71,9 +71,7 @@ def get_AD_Publications_With_Genes(net):
         "GC",
         "STAR",
     ]
-    ad_publications = a2g.genes.attach(
-        ad_publications, exclude=excluded_genes
-    )
+    ad_publications = a2g.genes.attach(ad_publications, exclude=excluded_genes)
 
     total_word_freq = a2g.nlp.freq_dist(ad_publications)
     high_freq_words = total_word_freq.most_common(100)
@@ -143,8 +141,6 @@ def elapsed_time_factory():
 if __name__ == "__main__":
     elapsed_time = elapsed_time_factory()
 
-    # NOTE: graphs headers manually changed, see pubmedparser issue #6
-    data_dir = "/mnt/c/Users/georgs2/pubnet/share"
     nodes = ("Abstract", "Descriptor", "Chemical", "Publication")
     edges = (
         ("Publication", "Abstract"),
@@ -153,7 +149,7 @@ if __name__ == "__main__":
     )
 
     message("Loading network")
-    publications = from_dir("Publication", nodes, edges, data_dir=data_dir)
+    publications = from_dir("Publication", nodes, edges)
     message(f"Network loaded in {elapsed_time()}\n")
 
     nltk.download("stopwords")
