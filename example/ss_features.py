@@ -172,7 +172,7 @@ if __name__ == "__main__":
     plt.xticks(x_pos, words, rotation="vertical", size=6)
     plt.ylabel("50 Most Common Word Frequencies")
     plt.tight_layout()
-    plt.savefig("50_most_common_word_frequencies.png")
+    plt.savefig("figures/50_most_common_word_frequencies.png")
 
     ad_publications = get_AD_Publications_With_Genes(publications)
     genes = ad_publications["Gene"]["GeneSymbol"].array
@@ -213,7 +213,7 @@ if __name__ == "__main__":
     plt.xticks(x_pos2, gene_names, rotation="vertical", size=6)
     plt.ylabel("50 Maximum Cosine Similarities")
     plt.tight_layout()
-    plt.savefig("max_cosine_similarities.png")
+    plt.savefig("figures/max_cosine_similarities.png")
 
     # message("Embeddings Shape: ", embeddings.shape)
     # message("First social science abstract embeddings: ")
