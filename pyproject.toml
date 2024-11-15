@@ -13,7 +13,7 @@ pandas = "^2.0"
 nltk = "^3.7"
 requests = "^2.28"
 appdirs = "^1"
-pubnet = {version = "^0.9", source = "testpypi", allow-prereleases = true}
+pubnet = {version = "^0.9", source = "testpypi", allow-prereleases = true, extras = ["pyarrow", "lm"]}
 
 [tool.poetry.group.dev.dependencies]
 ipython = "^8.16.1"
@@ -23,7 +23,6 @@ python-lsp-server = "^1.8.0"
 pydocstyle = "^6.3.0"
 pylsp-mypy = "^0.6.7"
 python-lsp-ruff = "^2.0.0"
-
 
 [[tool.poetry.source]]
 name = "PyPI"
