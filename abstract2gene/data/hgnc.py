@@ -25,8 +25,8 @@ def gene_symbols():
     return genes["symbol"].values
 
 
-def _find_gene_file(data_dir=default_cache_dir()):
-    cached_file = _most_recent_cached_file(data_dir)
+def _find_gene_file(cache_dir=default_cache_dir()):
+    cached_file = _most_recent_cached_file(cache_dir)
     if not cached_file:
         raise FileNotFoundError(
             "Gene symbols have not been downloaded.\n\tDownload"
@@ -41,12 +41,12 @@ def _find_gene_file(data_dir=default_cache_dir()):
             ' with: abstract2gene.data.download("gene_symbols")'
         )
 
-    return os.path.join(data_dir, cached_file)
+    return os.path.join(cache_dir, cached_file)
 
 
-def _most_recent_cached_file(data_dir):
+def _most_recent_cached_file(cache_dir):
     try:
-        possible_gene_files = os.listdir(data_dir)
+        possible_gene_files = os.listdir(cache_dir)
     except FileNotFoundError:
         return None
 
@@ -62,7 +62,7 @@ def _most_recent_cached_file(data_dir):
     )
 
 
-def download_gene_symbols(data_dir: str | None = None) -> None:
+def download_gene_symbols(cache_dir: str | None = None) -> None:
     """Download HGNC's set of genes.
 
     If a file has already been downloaded, it will check if there's a newer
@@ -70,7 +70,7 @@ def download_gene_symbols(data_dir: str | None = None) -> None:
 
     Parameters
     ----------
-    data_dir : optional str
+    cache_dir : optional str
         Where to store the file (defaults to `default_cache_dir`).
 
     See Also
@@ -79,31 +79,31 @@ def download_gene_symbols(data_dir: str | None = None) -> None:
     `abstract2gene.data.default_cache_dir`
 
     """
-    data_dir = data_dir or default_cache_dir()
+    cache_dir = cache_dir or default_cache_dir()
 
     last_update = _latest_gene_symbol_update()
     latest_file = _file_template.format(
         year=last_update["year"], month=last_update["month"]
     )
-    local_path = os.path.join(data_dir, latest_file)
+    local_path = os.path.join(cache_dir, latest_file)
 
     if os.path.exists(local_path):
         warnings.warn("Latest gene set already downloaded. Not doing anything")
         return
 
-    if not os.path.exists(data_dir):
-        os.mkdir(data_dir)
+    if not os.path.exists(cache_dir):
+        os.mkdir(cache_dir)
 
     pattern = _file_template.format(year=r"\d{4}", month=r"\d{2}")
-    stale_files = re.findall(pattern, "\0".join(os.listdir(data_dir)))
+    stale_files = re.findall(pattern, "\0".join(os.listdir(cache_dir)))
 
     if len(stale_files) > 0:
         print("Removing old gene symbol files...")
 
     for f in stale_files:
-        os.remove(os.path.join(data_dir, f))
+        os.remove(os.path.join(cache_dir, f))
 
-    print(f"Downloading {latest_file} to {data_dir}...")
+    print(f"Downloading {latest_file} to {cache_dir}...")
     r = requests.get(os.path.join(_base_url, latest_file))
     with open(local_path, "wb") as f:
         f.write(r.content)
