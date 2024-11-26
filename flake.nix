@@ -27,6 +27,15 @@
         preferWheels = true;
       };
 
+      REnv = (pkgs.rWrapper.override {
+        packages = with pkgs.rPackages; [
+          styler
+          lintr
+
+          tidyverse
+        ];
+      });
+
       nixDockerImage = pkgs.dockerTools.buildImage {
         name = "abstract2gene";
         tag = "nix";
@@ -51,6 +60,6 @@
     in {
       packages.dockerImage = nixDockerImage;
       devShells.${system}.default =
-        pkgs.mkShell { packages = [ a2gEnv pkgs.poetry ]; };
+        pkgs.mkShell { packages = [ a2gEnv pkgs.poetry REnv ]; };
     };
 }
