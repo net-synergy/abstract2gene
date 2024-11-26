@@ -16,7 +16,7 @@ def download(content, cache_dir=None):
 
     Parameters
     ----------
-    content : str { "hgnc_genes", "pubattor_genes", "pubmed_genes" }
+    content : str { "hgnc_genes", "pubtator_genes", "pubmed_genes" }
         The name of the content to download.
     cache_dir : optional str
         Where to download and check for content. Uses `default_cache_dir` by
