@@ -1,6 +1,6 @@
 library(tidyverse)
 
-results <- read_tsv("template_validation.tsv") |>
+results <- read_tsv("results/template_validation.tsv") |>
   mutate(gene = factor(str_match(gene, "[^\\|]*")), group = factor(group))
 
 set.seed(1234)
@@ -14,7 +14,8 @@ results_small
 metrics <- results_small |>
   group_by(gene, group) |>
   summarise(
-    mean = mean(similarity), stderr = sd(similarity) / sqrt(n()), sd = sd(similarity)
+    mean = mean(similarity), stderr = sd(similarity) / sqrt(n()),
+    sd = sd(similarity)
   ) |>
   ungroup()
 

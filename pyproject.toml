@@ -24,6 +24,7 @@ python-lsp-server = "^1.8.0"
 pydocstyle = "^6.3.0"
 pylsp-mypy = "^0.6.7"
 python-lsp-ruff = "^2.0.0"
+ipdb = "^0.13.13"
 
 [[tool.poetry.source]]
 name = "PyPI"
