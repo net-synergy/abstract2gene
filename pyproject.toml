@@ -25,6 +25,7 @@ pydocstyle = "^6.3.0"
 pylsp-mypy = "^0.6.7"
 python-lsp-ruff = "^2.0.0"
 ipdb = "^0.13.13"
+types-requests = "^2.32.0.20241016"
 
 [[tool.poetry.source]]
 name = "PyPI"
@@ -42,6 +43,7 @@ preview = true
 
 [tool.mypy]
 ignore_missing_imports = true
+plugins = ["numpy.typing.mypy_plugin"]
 
 [tool.pylsp-mypy]
 enabled = true

@@ -1,7 +1,12 @@
 library(tidyverse)
 
-results <- read_tsv("results/template_validation.tsv") |>
-  mutate(gene = factor(str_match(gene, "[^\\|]*")), group = factor(group))
+files <- dir("results")
+analysis <- str_split(files[[1]], "_validation\\.tsv", simplify = TRUE)[[1]]
+results <- read_tsv(paste0("results/", analysis, "_validation.tsv")) |>
+  mutate(
+    gene = factor(str_match(label, "[^\\|]*")), group = factor(group),
+    .keep = "unused"
+  )
 
 set.seed(1234)
 results_small <- results |>
@@ -41,6 +46,10 @@ ggplot(results_small, aes(x = gene, color = group)) +
     data = metrics, position = dodge, color = "black", size = 3, pch = 22
   ) +
   labs(y = "Similarity", x = "Gene") +
+  ggtitle(paste(
+    "Abstract embedding similarity using",
+    str_replace_all(analysis, "_", " "), "model"
+  )) +
   theme(axis.text.x = element_text(angle = 20))
 
 ggsave("figures/template_similarity_full.png")

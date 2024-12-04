@@ -10,6 +10,7 @@ def net2dataset(
     features: str = "Abstract_embedding",
     labels: str = "Gene",
     min_label_occurrences: int = 50,
+    remove_baseline: bool = False,
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
     """Return the network as a matrix of features and a matrix of labels.
 
@@ -20,13 +21,20 @@ def net2dataset(
     labels (binary vector).
 
     Label IDs is an array of the label nodes index that are in used in the
-    labels. Labels are limited to genes with atleast `min_label_occurrences`.
+    labels. Labels are limited to genes with at least `min_label_occurrences`.
+
+    If `remove_baseline` subtract the average of each feature.
     """
     embeddings_edge = net.get_edge(features, "Publication")
     n_features = np.sum(embeddings_edge["Publication"] == 0)
     embeddings = embeddings_edge.feature_vector("embedding").reshape(
         (-1, n_features)
     )
+
+    if remove_baseline:
+        baseline = embeddings.mean(axis=0, keepdims=True)
+        embeddings = embeddings - baseline
+
     embeddings = embeddings / np.reshape(
         np.linalg.norm(embeddings, axis=1), shape=(-1, 1)
     )
@@ -45,7 +53,8 @@ def net2dataset(
         (embeddings.shape[0], frequent_labels.shape[0]), np.bool_
     )
     label_vec[
-        label_edges["Publication"], [label_map[l] for l in label_edges[labels]]
+        label_edges["Publication"],
+        np.fromiter((label_map[l] for l in label_edges[labels]), dtype=int),
     ] = True
 
     return (embeddings, label_vec, label_nodes.index)
