@@ -7,7 +7,13 @@ embeddings for different labels (in the case of this package, genes).
 Templates are the average of many examples of abstracts tagged with a label.
 """
 
-__ALL__ = ["ModelNoWeights", "ModelMSELoss", "ModelMaximizeDistance"]
+__ALL__ = [
+    "ModelNoWeights",
+    "ModelSingleLayer",
+    "ModelMultiLayer",
+    "train",
+    "test",
+]
 
 import os
 
@@ -16,6 +22,7 @@ import jax.numpy as jnp
 import numpy as np
 import optax
 import pandas as pd
+from flax import nnx
 from jax import tree_util
 from sklearn.model_selection import LeaveOneOut
 
@@ -45,7 +52,6 @@ class Model:
     def __init__(
         self,
         name: str = "",
-        n_dims: int = 20,
     ):
         """Initialize a model.
 
@@ -85,7 +91,6 @@ class Model:
         self.result_file = RESULT_TEMPLATE.format(name=name)
         self.templates: ArrayLike | None = None
         self.params: PyTree = {}
-        self.n_dims = n_dims
 
     def __call__(self, x: ArrayLike) -> ArrayLike:
         return self.predict(x)
@@ -151,143 +156,112 @@ class Model:
             self.gradient(*batch),
         )
 
-    def train(
-        self,
-        data: DataSet,
-        max_epochs: int = 1000,
-        stop_delta: float = 1e-5,
-        learning_rate: float = 0.002,
-        reset_weights: bool = True,
-        verbose: bool = True,
-    ):
-        """Train weights for the model."""
+    def init_weights(self, data: DataSet, learning_rate: float) -> None:
+        raise NotImplementedError
 
-        def validate() -> float:
-            n = data.n_validate
-            return sum(self.loss(*batch) for batch in data.validate()) / n
 
-        if (not self.params) or reset_weights:
-            self.params = self.init_weights(data, self.n_dims, learning_rate)
+def train(
+    model: Model,
+    data: DataSet,
+    max_epochs: int = 1000,
+    stop_delta: float = 1e-5,
+    learning_rate: float = 0.002,
+    reset_weights: bool = True,
+    verbose: bool = True,
+):
+    """Train weights for the model."""
 
-        epoch = 0
-        window_size = 20
-        delta = np.full(window_size, np.nan)
-        last_err = validate()
+    def validate() -> float:
+        n = data.n_validate
+        return sum(model.loss(*batch) for batch in data.validate()) / n
+
+    if (not model.params) or reset_weights:
+        model.init_weights(data, learning_rate)
+
+    epoch = 0
+    window_size = 20
+    delta = np.full(window_size, np.nan)
+    last_err = validate()
+    if verbose:
+        print(f"Initial validation loss: {last_err:0.4g}")
+
+    delta[0] = stop_delta + 1
+    while (epoch < max_epochs) and (abs(np.nanmean(delta)) > stop_delta):
+        train_err = 0.0
+        count = 0
+        pred_t = 0
+        pred_f = 0
+        pred_tvar = 0
+        pred_fvar = 0
+        try:
+            for batch in data.train():
+                if count < window_size:
+                    x, templates, labels = batch
+                    x_t = x[labels.squeeze(), :]
+                    x_f = x[np.logical_not(labels.squeeze()), :]
+                    prediction = model.predict(x_t, templates)
+                    pred_t += prediction.mean()
+                    pred_tvar += prediction.var()
+                    prediction = model.predict(x_f, templates)
+                    pred_f += prediction.mean()
+                    pred_fvar += prediction.var()
+
+                model.update(batch, learning_rate)
+                train_err += model.loss(*batch)
+                count += 1
+        except KeyboardInterrupt:
+            # End training gracefully on keyboard interrupt. Model will
+            # still be trained.
+            print("\nExiting training loop")
+            break
+
+        err = validate()
+        delta[epoch % window_size] = last_err - err
+
         if verbose:
-            print(f"Initial validation loss: {last_err:0.4g}")
-
-        delta[0] = stop_delta + 1
-        while (epoch < max_epochs) and (abs(np.nanmean(delta)) > stop_delta):
-            train_err = 0.0
-            count = 0
-            pred_t = 0
-            pred_f = 0
-            pred_tsd = 0
-            pred_fsd = 0
-            try:
-                for batch in data.train():
-
-                    if count < window_size:
-                        x, templates, labels = batch
-                        x_t = x[labels.squeeze(), :]
-                        x_f = x[np.logical_not(labels.squeeze()), :]
-                        prediction = self.predict(x_t, templates)
-                        pred_t += prediction.mean()
-                        pred_tsd += prediction.std()
-                        prediction = self.predict(x_f, templates)
-                        pred_f += prediction.mean()
-                        pred_fsd += prediction.std()
-
-                    self.update(batch, learning_rate)
-                    train_err += self.loss(*batch)
-                    count += 1
-            except KeyboardInterrupt:
-                # End training gracefully on keyboard interrupt. Model will
-                # still be trained.
-                print("\nExiting training loop")
-                break
-
-            # learning_rate *= e ** (-learning_decay)
-            err = validate()
-            delta[epoch % window_size] = last_err - err
-
-            if verbose:
-                print(f"Epoch: {epoch}")
-                print(f"  Training loss: {train_err / count:.4g}")
-                print(f"  Validation loss: {err:.4g}")
-                print(f"  Delta: {delta[epoch % window_size]:.4g}")
-                print(f"  Avg delta: {delta.mean():.4g}")
-                print(
-                    f"  True: {pred_t / window_size:.4g} +/- "
-                    + f"{pred_tsd / window_size:.4g}"
-                )
-                print(
-                    f"  False: {pred_f / window_size:.4g} +/- "
-                    + f"{pred_fsd / window_size:.4g}"
-                )
-                print(
-                    "  Distance: ",
-                    f"{(pred_t - pred_f) / (0.5 * (pred_tsd + pred_fsd)):.4g}",
-                )
-
-            last_err = err
-            epoch += 1
-
-    def init_weights(
-        self, data: DataSet, n_dims: int, learning_rate: float
-    ) -> PyTree:
-        params = {
-            "w": data._rng.normal(0, 0.01, (data.features.shape[1], n_dims))
-        }
-        return params["w"] / np.linalg.norm(params["w"], axis=0, keepdims=True)
-
-    def test(
-        self,
-        data: DataSet,
-        max_num_tests: int | None = None,
-        save_results: bool = True,
-    ):
-        """Tests how well the model differentiates labels.
-
-        For each label, compares predictions for `self.batch_size` labeled
-        samples against samples without the label. Templates are created using
-        a leave-one-out method. Results are stored as a table in
-        `self.result_file`.
-
-        The `max_num_tests` controls how many labels to test. If None, tests
-        are test labels.
-
-        """
-        if save_results and os.path.exists(self.result_file):
-            os.unlink(self.result_file)
-
-        labels_test = data.labels[:, data._masks["test"]]
-        if data.label_names is not None:
-            symbols_test = data.label_names[data._masks["test"]]
-        else:
-            symbols_test = None
-
-        max_num_tests = max_num_tests or labels_test.shape[1]
-        n_tests = min(max_num_tests, labels_test.shape[1])
-
-        loss = 0.0
-        for i in range(n_tests):
-            symbol = symbols_test[i] if symbols_test is not None else "Unknown"
-            loss += self._test_label(
-                data, labels_test[:, i], symbol, save_results
+            print(f"Epoch: {epoch}")
+            print(f"  Training loss: {train_err / count:.4g}")
+            print(f"  Validation loss: {err:.4g}")
+            print(f"  Delta: {delta[epoch % window_size]:.4g}")
+            print(f"  Avg delta: {delta.mean():.4g}")
+            print(
+                f"  True: {pred_t / window_size:.4g} +/- "
+                + f"{np.sqrt(pred_tvar / window_size):.4g}"
             )
+            print(
+                f"  False: {pred_f / window_size:.4g} +/- "
+                + f"{np.sqrt(pred_fvar / window_size):.4g}"
+            )
+            distance = (
+                np.sqrt(window_size * 2)
+                * (pred_t - pred_f)
+                / np.sqrt((pred_tvar + pred_fvar))
+            )
+            print(f"  Distance: {distance:.4g}")
 
-        if save_results and not os.path.exists(RESULTS_TABLE):
-            with open(RESULTS_TABLE, "w") as f:
-                f.write("name\tmean_distance\n")
+        last_err = err
+        epoch += 1
 
-        if save_results:
-            with open(RESULTS_TABLE, "a") as f:
-                f.write(f"{self.name}\t{loss / n_tests:0.4g}\n")
 
-        print(f"Average sample mean distance:\n  {loss / n_tests:0.4g}")
+def test(
+    model: Model,
+    data: DataSet,
+    max_num_tests: int | None = None,
+    save_results: bool = True,
+):
+    """Tests how well the model differentiates labels.
 
-    def _test_label(self, data, indices, symbol, save_results):
+    For each label, compares predictions for `model.batch_size` labeled
+    samples against samples without the label. Templates are created using
+    a leave-one-out method. Results are stored as a table in
+    `model.result_file`.
+
+    The `max_num_tests` controls how many labels to test. If None, tests
+    are test labels.
+
+    """
+
+    def _test_label(model, data, indices, symbol, save_results):
         features_label = data.features[indices, :]
         # Make all tests have same number of samples.
         features_label = features_label[: data.batch_size, :]
@@ -314,10 +288,10 @@ class Model:
             template = features_label[train_index, :].mean(
                 axis=0, keepdims=True
             )
-            sim_within[i] = self.predict(
+            sim_within[i] = model.predict(
                 features_label[test_index, :], template
             )[0, 0]
-            sim_between[i] = self.predict(features_other[[i], :], template)[
+            sim_between[i] = model.predict(features_other[[i], :], template)[
                 0, 0
             ]
 
@@ -325,7 +299,7 @@ class Model:
             label_df = pd.DataFrame(
                 {
                     "label": np.repeat(symbol, data.batch_size * 2),
-                    "pmid": pmids,
+                    # "pmid": pmids,
                     "group": np.concat(
                         (
                             np.asarray("within").repeat(data.batch_size),
@@ -336,9 +310,9 @@ class Model:
                 }
             )
 
-            header = not os.path.exists(self.result_file)
+            header = not os.path.exists(model.result_file)
             label_df.to_csv(
-                self.result_file,
+                model.result_file,
                 sep="\t",
                 index=False,
                 mode="a",
@@ -347,8 +321,37 @@ class Model:
 
         distance = sim_within.mean() - sim_between.mean()
         stderr = np.concat((sim_within, sim_between)).std(ddof=1)
-        stderr /= data.batch_size * 2
+        stderr /= np.sqrt(data.batch_size * 2)
         return distance / stderr
+
+    if save_results and os.path.exists(model.result_file):
+        os.unlink(model.result_file)
+
+    labels_test = data.labels[:, data._masks["test"]]
+    if data.label_names is not None:
+        symbols_test = data.label_names[data._masks["test"]]
+    else:
+        symbols_test = None
+
+    max_num_tests = max_num_tests or labels_test.shape[1]
+    n_tests = min(max_num_tests, labels_test.shape[1])
+
+    loss = 0.0
+    for i in range(n_tests):
+        symbol = symbols_test[i] if symbols_test is not None else "Unknown"
+        loss += _test_label(
+            model, data, labels_test[:, i], symbol, save_results
+        )
+
+    if save_results and not os.path.exists(RESULTS_TABLE):
+        with open(RESULTS_TABLE, "w") as f:
+            f.write("name\tmean_distance\n")
+
+    if save_results:
+        with open(RESULTS_TABLE, "a") as f:
+            f.write(f"{model.name}\t{loss / n_tests:0.4g}\n")
+
+    print(f"Average sample mean distance:\n  {loss / n_tests:0.4g}")
 
 
 class ModelNoWeights(Model):
@@ -357,97 +360,115 @@ class ModelNoWeights(Model):
     Prediction is the dot product between the samples and templates.
     """
 
-    def train(self, *args, **kwds):
-        pass
-
     def _predict(self, x: ArrayLike, templates: ArrayLike) -> ArrayLike:
         return x @ templates.T
 
+    def loss(self, samples, templates, labels):
+        return 0.0
 
-class ModelMSELoss(Model):
-    """Model based on the mean squared error of y_hat - y loss function."""
+    def init_weights(self, data, learning_rate):
+        pass
 
-    def gradient(
-        self, x: ArrayLike, templates: ArrayLike, labels: LabelLike
-    ) -> PyTree:
-        """Calculate gradient of loss function with respect to weights.
-
-        Note: labels are assumed to be a vector. When using the model itself
-        labels will likely be a matrix of samples x n_genes. When training only
-        one gene is tested at a given time. Due to the math, `x`, `template`,
-        and `labels` must all be vectors while `weights` is a matrix. It is
-        expected that `x` is actually a samples x features matrix and the
-        matrix operations are iterated over it's samples.
-        """
-        return {
-            "w": sum(
-                (self.predict(x.reshape((1, -1)), templates) - label)
-                * (
-                    x.reshape((-1, 1)) @ ([templates] @ self.params["w"])
-                    + templates.T @ (x.reshape((1, -1)) @ self.params["w"])
-                )
-                for x, label in zip(x, labels)
-            )
-            / x.shape[0]
-        }
-
-    def _predict(self, x: ArrayLike, templates: ArrayLike) -> ArrayLike:
-        return x @ self.params["w"] @ self.params["w"].T @ templates.T
-
-    def loss(
-        self, x: ArrayLike, templates: ArrayLike, labels: LabelLike
-    ) -> float:
-        return np.square(self.predict(x, templates) - labels).mean()
+    def update(self, batch: Batch, learning_rate: float | None) -> None:
+        pass
 
 
 @jax.jit
-def _flax_predict(
+def _sl_predict(
     weights: ArrayLike, samples: ArrayLike, templates: ArrayLike
 ) -> ArrayLike:
     return (samples @ weights) @ (weights.T @ templates.T)
 
 
 @jax.jit
-def _flax_loss(
+def _mse_loss(
     params: PyTree,
     samples: ArrayLike,
     templates: ArrayLike,
     labels: LabelLike,
 ):
-    prediction = _flax_predict(params["w"], samples, templates)
+    prediction = _sl_predict(params["w"], samples, templates)
     return jnp.mean(optax.losses.l2_loss(prediction, labels))
 
 
-_flax_gradient = jax.grad(_flax_loss, has_aux=False)
+_mse_gradient = jax.grad(_mse_loss, has_aux=False)
 
 
-class ModelJax(Model):
-    def __init__(self, *args, seed: int = 0, **kwds):
+class ModelSingleLayer(Model):
+    def __init__(self, *args, seed: int = 0, n_dims: int = 20, **kwds):
         super().__init__(*args, **kwds)
+        self.n_dims = n_dims
         self._key = jax.random.PRNGKey(seed)
 
     def _predict(self, samples, templates):
-        return _flax_predict(self.params["w"], samples, templates)
+        return _sl_predict(self.params["w"], samples, templates)
 
     def loss(self, samples, templates, labels):
-        return _flax_loss(self.params, samples, templates, labels)
+        return _mse_loss(self.params, samples, templates, labels)
 
-    def init_weights(
-        self, data: DataSet, n_dims: int, learning_rate: float
-    ) -> PyTree:
+    def init_weights(self, data: DataSet, learning_rate: float) -> None:
         self._optimizer = optax.adam(learning_rate=learning_rate)
         self._key, key = jax.random.split(self._key)
-        params = {"w": jax.random.normal(key, (data.n_features, n_dims))}
-        self._state = self._optimizer.init(params)
-
-        return params
-
-    def gradient(
-        self, x: ArrayLike, templates: ArrayLike, labels: LabelLike
-    ) -> PyTree:
-        return _flax_gradient(self.params, x, templates, labels)
+        self.params = {
+            "w": jax.random.normal(key, (data.n_features, self.n_dims))
+        }
+        self._state = self._optimizer.init(self.params)
 
     def update(self, batch: Batch, learning_rate: float | None) -> None:
-        grads = self.gradient(*batch)
+        grads = _mse_gradient(self.params, *batch)
         updates, self._state = self._optimizer.update(grads, self._state)
         self.params = optax.apply_updates(self.params, updates)
+
+
+@jax.jit
+def _ml_predict(samples, templates):
+    return samples @ templates.T
+
+
+class ModelMultiLayer(Model, nnx.Module):
+    def __init__(
+        self,
+        *args,
+        dims: tuple[int, ...],
+        seed: int = 0,
+        dropout: float = 0.1,
+        **kwds,
+    ):
+        super().__init__(*args, **kwds)
+        self._rng = nnx.Rngs(seed)
+        self.layers = [
+            nnx.Linear(dims[i], dims[i + 1], rngs=self._rng)
+            for i in range(len(dims) - 1)
+        ]
+        self.dropout = nnx.Dropout(rate=dropout, rngs=self._rng)
+
+    def _net(self, x):
+        x = self.dropout(self.layers[0](x))
+        for layer in self.layers[1:]:
+            x = layer(x)
+
+        return x
+
+    def _predict(self, samples, templates):
+        samples = self._net(samples)
+        templates = self._net(templates)
+        return _ml_predict(samples, templates)
+
+    def loss(self, samples, templates, labels):
+        return jnp.mean(
+            optax.losses.l2_loss(self._predict(samples, templates), labels)
+        )
+
+    def init_weights(self, data: DataSet, learning_rate: float) -> None:
+        self._optimizer = nnx.Optimizer(
+            self, optax.adam(learning_rate=learning_rate)
+        )
+
+    @nnx.jit
+    def update(self, batch: Batch, learning_rate: float | None) -> None:
+        def loss(model):
+            y_pred = model._predict(*batch[:-1])
+            return jnp.mean((y_pred - batch[-1]) ** 2)
+
+        grads = nnx.grad(loss)(self)
+        self._optimizer.update(grads)

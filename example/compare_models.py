@@ -2,7 +2,6 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pubnet
 import scipy as sp
-from numpy.random import default_rng
 
 import abstract2gene as a2g
 
@@ -33,32 +32,37 @@ data = a2g.dataset.net2dataset(
 )
 
 model: a2g.model.Model = a2g.model.ModelNoWeights(name="noweights")
-model.train(data)
-model.test(data, max_num_tests=MAX_GENE_TESTS, save_results=False)
+a2g.model.test(model, data, max_num_tests=MAX_GENE_TESTS, save_results=False)
 
-model = a2g.model.ModelJax(name="", seed=12, n_dims=20)
+model = a2g.model.ModelSingleLayer(name="", seed=12, n_dims=20)
 
 # Coarse dimension search
 for d in range(1, 20, 2):
     data.reset_rng()
     model.name = f"random_weights_{d}_dims"
-    model.train(data, learning_rate=1e-4, max_epochs=100)
-    model.test(data, max_num_tests=MAX_GENE_TESTS)
+    a2g.model.train(model, data, learning_rate=1e-4, max_epochs=100)
+    a2g.model.test(model, data, max_num_tests=MAX_GENE_TESTS)
 
 # Finer dimension search based on coarse results
 for d in range(20, 110, 10):
     data.reset_rng()
     model.name = f"random_weights_{d}_dims"
-    model.train(data, learning_rate=1e-4, max_epochs=100)
-    model.test(data, max_num_tests=MAX_GENE_TESTS)
+    a2g.model.train(model, data, learning_rate=1e-4, max_epochs=100)
+    a2g.model.test(model, data, max_num_tests=MAX_GENE_TESTS)
+
+dims = (data.n_features, 64, 64)
+model = a2g.model.ModelMultiLayer(
+    name="multi", seed=20, dims=dims, dropout=0.2
+)
+a2g.model.train(model, data, learning_rate=1e-4, max_epochs=100)
+a2g.model.test(model, data, max_num_tests=MAX_GENE_TESTS)
 
 data = a2g.dataset.net2dataset(
     net, min_occurrences=N_SAMPLES, remove_baseline=True
 )
 
 model = a2g.model.ModelNoWeights(name="noweights_baseline_removed")
-model.train(data, learning_rate=0.002)
-model.test(data, max_num_tests=MAX_GENE_TESTS)
+a2g.model.test(model, data, max_num_tests=MAX_GENE_TESTS)
 
 # Plot weights
 fig, ax = plt.subplots()
