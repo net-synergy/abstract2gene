@@ -263,9 +263,10 @@ def test(
     """
 
     def _test_label(model, data, indices, symbol, save_results):
+        mini_batch_size = data.batch_size // 2
         features_label = data.features[indices, :]
         # Make all tests have same number of samples.
-        features_label = features_label[: data.batch_size, :]
+        features_label = features_label[:mini_batch_size, :]
         features_other = data.features[np.logical_not(indices), :]
 
         if data.feature_names is not None:
@@ -273,16 +274,16 @@ def test(
             unlabeled_pmids = data.feature_names[np.logical_not(indices)]
             pmids = np.concat(
                 (
-                    label_pmids[: data.batch_size],
-                    unlabeled_pmids[: data.batch_size],
+                    label_pmids[:mini_batch_size],
+                    unlabeled_pmids[:mini_batch_size],
                 )
             )
         else:
-            pmids = np.repeat("Unknown", data.batch_size * 2)
+            pmids = np.repeat("Unknown", mini_batch_size * 2)
 
         loo = LeaveOneOut()
-        sim_within = np.zeros((data.batch_size))
-        sim_between = np.zeros((data.batch_size))
+        sim_within = np.zeros((mini_batch_size))
+        sim_between = np.zeros((mini_batch_size))
         for i, (train_index, test_index) in enumerate(
             loo.split(features_label)
         ):
@@ -299,12 +300,12 @@ def test(
         if save_results:
             label_df = pd.DataFrame(
                 {
-                    "label": np.repeat(symbol, data.batch_size * 2),
-                    # "pmid": pmids,
+                    "label": np.repeat(symbol, mini_batch_size * 2),
+                    "pmid": pmids,
                     "group": np.concat(
                         (
-                            np.asarray("within").repeat(data.batch_size),
-                            np.asarray("between").repeat(data.batch_size),
+                            np.asarray("within").repeat(mini_batch_size),
+                            np.asarray("between").repeat(mini_batch_size),
                         )
                     ),
                     "similarity": np.concat((sim_within, sim_between)),
@@ -322,7 +323,7 @@ def test(
 
         distance = sim_within.mean() - sim_between.mean()
         stderr = np.concat((sim_within, sim_between)).std(ddof=1)
-        stderr /= np.sqrt(data.batch_size * 2)
+        stderr /= np.sqrt(mini_batch_size)
         return distance / stderr
 
     if save_results and os.path.exists(model.result_file):
