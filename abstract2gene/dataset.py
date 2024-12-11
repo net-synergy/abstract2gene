@@ -242,30 +242,47 @@ class DataSet:
         template_size = template_size or self.template_size
 
         def _batch_rows(task, batch_size, template_size):
-            n_batches = self.n_samples // batch_size
             n_labels = 100
-            labels = self._rng.choice(self.n_labels, n_labels, replace=False)
-            samples = self._rng.permutation(self.n_samples)[self._masks[task]]
-            occurances = self.labels[samples, :][:, labels].cumsum(axis=0)
+            samples = self._rng.permutation(
+                np.arange(self.n_samples)[self._masks[task]]
+            )
+            labels = self.labels[samples, :]
+            occurances = labels.cumsum(axis=0)
+            labels = labels[
+                :, occurances[-1, :] >= (self.template_size + self.batch_size)
+            ]
+            occurances = occurances[
+                :, occurances[-1, :] >= (self.template_size + batch_size)
+            ]
+            n_labels = min(n_labels, labels.shape[1])
+            label_idx = self._rng.choice(
+                labels.shape[1], n_labels, replace=False
+            )
             templates = np.fromiter(
                 (
                     self.features[
                         samples[occurances[:, i] < self.template_size],
                         :,
-                    ].mean(axis=0, keepdims=True)
-                    for i in range(n_labels)
+                    ].mean(axis=0, keepdims=False)
+                    for i in label_idx
                 ),
                 dtype=(self.features.dtype, self.n_features),
             )
+            labels = labels[:, label_idx]
 
             samples = samples[np.all(occurances >= self.template_size, axis=1)]
+            n_batches = samples.shape[0] // batch_size
+
+            if n_batches < 1:
+                raise RuntimeError("Not enough samples to create a batch.")
+
             for self._index in range(n_batches):
                 start_idx = self._index * batch_size
                 batch_samples = samples[start_idx : (start_idx + batch_size)]
                 yield (
                     self.features[batch_samples, :],
                     templates,
-                    self.labels[batch_samples, :][:, labels],
+                    labels[batch_samples, :],
                 )
 
         def _batch_columns(task, batch_size, template_size):

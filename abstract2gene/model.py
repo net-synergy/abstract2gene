@@ -197,8 +197,9 @@ def train(
             for batch in data.train():
                 if count < window_size:
                     x, templates, labels = batch
-                    x_t = x[labels.squeeze(), :]
-                    x_f = x[np.logical_not(labels.squeeze()), :]
+                    col = np.argmax(labels.sum(axis=0))
+                    x_t = x[labels[:, col].squeeze(), :]
+                    x_f = x[np.logical_not(labels[:, col].squeeze()), :]
                     prediction = model.predict(x_t, templates)
                     pred_t += prediction.mean()
                     pred_tvar += prediction.var()
@@ -447,7 +448,7 @@ class ModelMultiLayer(Model, nnx.Module):
         for layer in self.layers[1:]:
             x = layer(x)
 
-        return x
+        return nnx.gelu(x)
 
     def _predict(self, samples, templates):
         samples = self._net(samples)
@@ -469,6 +470,56 @@ class ModelMultiLayer(Model, nnx.Module):
         def loss(model):
             y_pred = model._predict(*batch[:-1])
             return jnp.mean((y_pred - batch[-1]) ** 2)
+
+        grads = nnx.grad(loss)(self)
+        self._optimizer.update(grads)
+
+
+class ModelWidth(Model, nnx.Module):
+    def __init__(
+        self,
+        *args,
+        dims: tuple[int, ...],
+        seed: int = 0,
+        dropout: float = 0.1,
+        **kwds,
+    ):
+        super().__init__(*args, **kwds)
+        self._rng = nnx.Rngs(seed)
+        self.layers = [
+            nnx.Linear(dims[i], dims[i + 1], rngs=self._rng)
+            for i in range(len(dims) - 1)
+        ]
+        self.dropout = nnx.Dropout(rate=dropout, rngs=self._rng)
+
+    def _net(self, x):
+        x = self.dropout(self.layers[0](x))
+        for layer in self.layers[1:]:
+            x = layer(x)
+
+        return nnx.gelu(x)
+
+    def _predict(self, samples, templates):
+        samples = self._net(samples)
+        templates = self._net(templates)
+        return _ml_predict(samples, templates)
+
+    def loss(self, samples, templates, labels):
+        return jnp.mean(
+            optax.losses.softmax_cross_entropy(
+                self._predict(samples, templates), labels
+            )
+        )
+
+    def init_weights(self, data: DataSet, learning_rate: float) -> None:
+        self._optimizer = nnx.Optimizer(
+            self, optax.adam(learning_rate=learning_rate)
+        )
+
+    @nnx.jit
+    def update(self, batch: Batch, learning_rate: float | None) -> None:
+        def loss(model):
+            return model.loss(*batch)
 
         grads = nnx.grad(loss)(self)
         self._optimizer.update(grads)

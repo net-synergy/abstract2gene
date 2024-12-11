@@ -50,10 +50,26 @@ for d in range(20, 110, 10):
     a2g.model.train(model, data, learning_rate=1e-4, max_epochs=100)
     a2g.model.test(model, data, max_num_tests=MAX_GENE_TESTS)
 
-dims = (data.n_features, 64, 64)
+
+dims = (data.n_features, 64)
 model = a2g.model.ModelMultiLayer(
     name="multi", seed=20, dims=dims, dropout=0.2
 )
+a2g.model.train(model, data, learning_rate=1e-4, max_epochs=100)
+a2g.model.test(model, data, max_num_tests=MAX_GENE_TESTS)
+
+data = a2g.dataset.net2dataset(
+    net,
+    min_occurrences=100,
+    label_name="GeneSymbol",
+    feature_name="PMID",
+    seed=42,
+    batch_size=32,
+    template_size=32,
+    axis=0,
+)
+dims = (data.n_features, 64)
+model = a2g.model.ModelWidth(name="wide", seed=20, dims=dims, dropout=0.2)
 a2g.model.train(model, data, learning_rate=1e-4, max_epochs=100)
 a2g.model.test(model, data, max_num_tests=MAX_GENE_TESTS)
 
