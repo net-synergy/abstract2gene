@@ -11,7 +11,6 @@ packages = [{ include = "abstract2gene" }]
 python = "^3.10,<3.13"
 pandas = "^2.0"
 nltk = "^3.7"
-requests = "^2.28"
 appdirs = "^1"
 pubnet = {version = "^0.9", source = "testpypi", allow-prereleases = true, extras = ["pyarrow", "lm"]}
 scikit-learn = "^1.5.2"
@@ -28,7 +27,6 @@ pydocstyle = "^6.3.0"
 pylsp-mypy = "^0.6.7"
 python-lsp-ruff = "^2.0.0"
 ipdb = "^0.13.13"
-types-requests = "^2.32.0.20241016"
 
 [[tool.poetry.source]]
 name = "PyPI"

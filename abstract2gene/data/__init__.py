@@ -1,14 +1,14 @@
-"""Download relevant publication data from various sources."""
+"""Download relevant data from various sources."""
 
-from ._utils import default_cache_dir
-from .hgnc import download_gene_symbols as download_hgnc_gene_symbols
-from .pubtator import download_gene_edges as download_gene_edges
+from .bioc import BiocDownloader
+from .pubmed import PubmedDownloader
+from .pubtator import PubtatorDownloader
 
-__all__ = ["default_cache_dir", "download"]
+__all__ = ["download"]
 
 
-def download(content, cache_dir=None):
-    """Download content from online DB.
+def download(content: str, cache_dir: str | None = None) -> None:
+    """Download content from online FTP server.
 
     If content already downloaded, checks for newer version and, if local files
     are outdated, downloads files. If local content is up-to-date, does
@@ -16,9 +16,9 @@ def download(content, cache_dir=None):
 
     Parameters
     ----------
-    content : str { "hgnc_genes", "pubtator_genes", "pubmed_genes" }
+    content : str { "pubmed", "pubtator", "bioc" }
         The name of the content to download.
-    cache_dir : optional str
+    cache_dir : str, optional
         Where to download and check for content. Uses `default_cache_dir` by
         default.
 
@@ -32,8 +32,9 @@ def download(content, cache_dir=None):
 
     """
     downloaders = {
-        "hgnc_genes": download_hgnc_gene_symbols,
-        "pubmed_genes": lambda _dir: download_gene_edges("pubmed", _dir),
-        "pubtator_genes": lambda _dir: download_gene_edges("pubtator", _dir),
+        "pubmed": PubmedDownloader,
+        "pubtator": PubtatorDownloader,
+        "bioc": BiocDownloader,
     }
-    downloaders[content](cache_dir or default_cache_dir())
+    downloader = downloaders[content](cache_dir)
+    downloader.download()

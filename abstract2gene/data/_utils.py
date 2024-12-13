@@ -1,3 +1,8 @@
+__all__ = [
+    "default_cache_dir",
+    "default_data_dir",
+]
+
 import os
 
 import appdirs
@@ -7,22 +12,25 @@ from abstract2gene import __name__ as pkg_name
 _APPAUTHOR = "net_synergy"
 
 
-def default_cache_dir() -> str:
+def default_cache_dir(path: str | None = None) -> str:
     """Find the default location to save cache files.
 
     If the directory does not exist it is created.
 
     Cache files are specifically files that can be easily reproduced,
     i.e. those that can be downloaded from the internet.
+
+    If `path` is provided, return the cache dir with path appended to it.
     """
     cache_dir = appdirs.user_cache_dir(pkg_name, _APPAUTHOR)
+    cache_dir = os.path.join(cache_dir, path) if path else cache_dir
     if not os.path.exists(cache_dir):
         os.mkdir(cache_dir, mode=0o755)
 
     return cache_dir
 
 
-def default_data_dir() -> str:
+def default_data_dir(path: str | None = None) -> str:
     """Find the default location to save data files.
 
     If the directory does not exist it is created.
@@ -30,8 +38,11 @@ def default_data_dir() -> str:
     Data files are files created by a user. It's possible they can be
     reproduced by rerunning the script that produced them but there is
     no guarantee they can be perfectly reproduced.
+
+    If `path` is provided, return the data dir with path appended to it.
     """
     data_dir = appdirs.user_data_dir(pkg_name, _APPAUTHOR)
+    data_dir = os.path.join(data_dir, path) if path else data_dir
     if not os.path.exists(data_dir):
         os.mkdir(data_dir, mode=0o755)
 
