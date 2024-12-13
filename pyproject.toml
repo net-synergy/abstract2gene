@@ -11,12 +11,13 @@ packages = [{ include = "abstract2gene" }]
 python = "^3.10,<3.13"
 pandas = "^2.0"
 nltk = "^3.7"
-appdirs = "^1"
 pubnet = {version = "^0.9", source = "testpypi", allow-prereleases = true, extras = ["pyarrow", "lm"]}
 scikit-learn = "^1.5.2"
 jax = "^0.4.35"
 flax = "^0.10.2"
 optax = "^0.2.4"
+synstore = "^0.1.0"
+numpy = "^2.2.0"
 
 [tool.poetry.group.dev.dependencies]
 ipython = "^8.16.1"
@@ -45,6 +46,7 @@ preview = true
 [tool.mypy]
 ignore_missing_imports = true
 plugins = ["numpy.typing.mypy_plugin"]
+exclude = ["example"]
 
 [tool.pylsp-mypy]
 enabled = true

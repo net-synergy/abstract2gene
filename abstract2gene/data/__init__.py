@@ -1,10 +1,11 @@
 """Download relevant data from various sources."""
 
+__all__ = ["download", "default_cache_dir", "default_data_dir"]
+
+from ._utils import default_cache_dir, default_data_dir
 from .bioc import BiocDownloader
 from .pubmed import PubmedDownloader
 from .pubtator import PubtatorDownloader
-
-__all__ = ["download"]
 
 
 def download(content: str, cache_dir: str | None = None) -> None:

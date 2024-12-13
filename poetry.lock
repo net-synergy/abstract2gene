@@ -2804,6 +2804,20 @@ pure-eval = "*"
 tests = ["cython", "littleutils", "pygments", "pytest", "typeguard"]
 
 [[package]]
+name = "synstore"
+version = "0.1.1"
+description = "Consistent storage for net-synergy projects."
+optional = false
+python-versions = "<4.0,>=3.10"
+files = [
+    {file = "synstore-0.1.1-py3-none-any.whl", hash = "sha256:5b515b1bc5ec6c80aa3cfd9e7ba116482c2f2461341f9fb60137f97c8f22109c"},
+    {file = "synstore-0.1.1.tar.gz", hash = "sha256:b7a829464f85898d545ef546d0fa684388bd73346c6d1c7e92d65081e090bcea"},
+]
+
+[package.dependencies]
+platformdirs = ">=4.3.6,<5.0.0"
+
+[[package]]
 name = "tensorstore"
 version = "0.1.71"
 description = "Read and write large, multi-dimensional arrays"
@@ -3207,4 +3221,4 @@ type = ["pytest-mypy"]
 [metadata]
 lock-version = "2.0"
 python-versions = "^3.10,<3.13"
-content-hash = "29ddca81bb2687b70f8ed1108e0cb94909333df1e414390e70989dcb0f5fd02a"
+content-hash = "028aa38e4bccf252942db6aca57573adce2fc2d2d0eeafaf24c07c8a6125310e"

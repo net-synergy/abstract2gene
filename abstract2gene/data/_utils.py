@@ -1,49 +1,47 @@
 __all__ = [
     "default_cache_dir",
     "default_data_dir",
+    "list_cache",
+    "list_data",
+    "delete_from_cache",
+    "delete_from_data",
+    "storage_factory",
 ]
 
 import os
+from collections.abc import Callable
+from typing import TypeVar
 
-import appdirs
+import synstore
+from typing_extensions import ParamSpec
 
 from abstract2gene import __name__ as pkg_name
 
-_APPAUTHOR = "net_synergy"
+synstore.set_package_name(pkg_name)
+
+default_cache_dir = synstore.default_cache_dir
+default_data_dir = synstore.default_data_dir
+list_cache = synstore.list_cache
+list_data = synstore.list_data
+delete_from_cache = synstore.delete_from_cache
+delete_from_data = synstore.delete_from_data
+
+P = ParamSpec("P")
+T = TypeVar("T")
 
 
-def default_cache_dir(path: str | None = None) -> str:
-    """Find the default location to save cache files.
+def storage_factory(func: Callable[P, T], subdir: str) -> Callable[P, T]:
+    def wrapper(*args: P.args, **kwds: P.kwargs) -> T:
+        if len(args) != 0:
+            new_args = (os.path.join(subdir, args[0]),) + args[1:]  # type: ignore[call-overload]
+        else:
+            new_args = args
 
-    If the directory does not exist it is created.
+        if "path" in kwds and kwds["path"] is not None:
+            kwds["path"] = os.path.join(subdir, kwds["path"])  # type: ignore[call-overload]
+        else:
+            kwds["path"] = subdir
 
-    Cache files are specifically files that can be easily reproduced,
-    i.e. those that can be downloaded from the internet.
+        return func(*new_args, **kwds)
 
-    If `path` is provided, return the cache dir with path appended to it.
-    """
-    cache_dir = appdirs.user_cache_dir(pkg_name, _APPAUTHOR)
-    cache_dir = os.path.join(cache_dir, path) if path else cache_dir
-    if not os.path.exists(cache_dir):
-        os.mkdir(cache_dir, mode=0o755)
-
-    return cache_dir
-
-
-def default_data_dir(path: str | None = None) -> str:
-    """Find the default location to save data files.
-
-    If the directory does not exist it is created.
-
-    Data files are files created by a user. It's possible they can be
-    reproduced by rerunning the script that produced them but there is
-    no guarantee they can be perfectly reproduced.
-
-    If `path` is provided, return the data dir with path appended to it.
-    """
-    data_dir = appdirs.user_data_dir(pkg_name, _APPAUTHOR)
-    data_dir = os.path.join(data_dir, path) if path else data_dir
-    if not os.path.exists(data_dir):
-        os.mkdir(data_dir, mode=0o755)
-
-    return data_dir
+    return wrapper

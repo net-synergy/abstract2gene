@@ -7,12 +7,18 @@ Downloading and processing files takes a long time since each tarball is ~16GB
 compressed and must be decompressed.
 """
 
-__all__ = ["BiocDownloader"]
+__all__ = [
+    "BiocDownloader",
+    "list_cache",
+    "delete_from_cache",
+]
 
-import re
 from typing import Iterable
 
 from ._downloader import FtpDownloader
+from ._utils import delete_from_cache as _delete_cache
+from ._utils import list_cache as _list_cache
+from ._utils import storage_factory
 
 _FTP_INFO = {
     "server": "ftp.ncbi.nlm.nih.gov",
@@ -21,6 +27,9 @@ _FTP_INFO = {
 
 _BIOC_TEMPLATE = "BioCXML.{}.tar.gz"
 _NAME = "bioc"
+
+list_cache = storage_factory(_list_cache, _NAME)
+delete_from_cache = storage_factory(_delete_cache, _NAME)
 
 
 class BiocDownloader(FtpDownloader):
