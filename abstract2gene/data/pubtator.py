@@ -76,7 +76,9 @@ def add_gene_edges(
             names=["PMID", "Type", "NCBIGeneID", "GeneSymbol", "Resource"],
             usecols=["PMID", "NCBIGeneID", "GeneSymbol"],
             memory_map=True,
+            low_memory=False,
         )
+        table = table[pd.notna(table["NCBIGeneID"])]
         table["NCBIGeneID"] = (
             table["NCBIGeneID"]
             .astype("str")
