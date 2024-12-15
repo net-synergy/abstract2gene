@@ -18,6 +18,7 @@ flax = "^0.10.2"
 optax = "^0.2.4"
 synstore = "^0.1.0"
 numpy = "^2.2.0"
+tqdm = "^4.67.1"
 
 [tool.poetry.group.dev.dependencies]
 ipython = "^8.16.1"

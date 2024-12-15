@@ -7,6 +7,8 @@ import os
 from ftplib import FTP
 from typing import Iterable
 
+from tqdm import tqdm
+
 from abstract2gene.storage import default_cache_dir
 
 
@@ -21,7 +23,7 @@ class FtpDownloader:
         self.files = files
         self.cache_dir = cache_dir or default_cache_dir(self.name)
         self.ftp: FTP | None = self.connect()
-        self.ls = self.ftp.mlsd(facts=["modify"])
+        self.ls = list(self.ftp.mlsd(facts=["modify"]))
 
     @property
     def name(self) -> str:
@@ -58,6 +60,12 @@ class FtpDownloader:
 
     def _download_file(self, file: str) -> str:
         """Download a single file from the server."""
+        if self.ftp is None:
+            # _download_file is only called by download which ensures
+            # connection exists so shouldn't matter but to keep mypy happy and
+            # just in case double check self.ftp is set.
+            raise RuntimeError("FTP not connected")
+
         remote_files = [f[0] for f in self.ls]
         if file not in remote_files:
             raise ValueError(f'File "{file}" not found on server.')
@@ -66,14 +74,24 @@ class FtpDownloader:
             if self._is_old(file):
                 os.unlink(self._local(file))
             else:
-                print("Current file already downloaded.")
+                print(f"Most recent file for {file} already downloaded.")
                 return self._local(file)
 
-        print(f"Starting download for {file}")
-        with open(self._local(file), "wb") as fp:
-            # _download_file is only called by download which ensures
-            # connection exists before calling _download file.
-            self.ftp.retrbinary(f"RETR {file}", fp.write)  # type: ignore[union-attr]
+        # Needed to switch from ASCII to binary mode to work with ftp.size.
+        self.ftp.voidcmd("TYPE I")
+        keys = {
+            "total": self.ftp.size(file),
+            "desc": file,
+            "unit": "B",
+            "unit_scale": True,
+        }
+        with open(self._local(file), "wb") as fp, tqdm(**keys) as pbar:
+
+            def progress_callback(data):
+                fp.write(data)
+                pbar.update(len(data))
+
+            self.ftp.retrbinary(f"RETR {file}", progress_callback)
 
         return self._local(file)
 
@@ -95,6 +113,7 @@ class FtpDownloader:
         if self.ftp is None:
             self.ftp = self.connect()
 
+        print("Starting downloads:")
         files = [self._download_file(file) for file in self.files]
         self.disconnect()
 
