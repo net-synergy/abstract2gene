@@ -15,10 +15,11 @@ __all__ = [
 
 from typing import Iterable
 
+from abstract2gene.storage import _storage_factory
+from abstract2gene.storage import delete_from_cache as _delete_cache
+from abstract2gene.storage import list_cache as _list_cache
+
 from ._downloader import FtpDownloader
-from ._utils import delete_from_cache as _delete_cache
-from ._utils import list_cache as _list_cache
-from ._utils import storage_factory
 
 _FTP_INFO = {
     "server": "ftp.ncbi.nlm.nih.gov",
@@ -28,8 +29,8 @@ _FTP_INFO = {
 _BIOC_TEMPLATE = "BioCXML.{}.tar.gz"
 _NAME = "bioc"
 
-list_cache = storage_factory(_list_cache, _NAME)
-delete_from_cache = storage_factory(_delete_cache, _NAME)
+list_cache = _storage_factory(_list_cache, _NAME)
+delete_from_cache = _storage_factory(_delete_cache, _NAME)
 
 
 class BiocDownloader(FtpDownloader):

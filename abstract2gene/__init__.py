@@ -1,3 +1,3 @@
-from . import data, dataset, model, nlp
+from . import data, dataset, model, storage
 
-__all__ = ["nlp", "genes", "model", "data", "dataset"]
+__all__ = ["model", "data", "dataset", "storage"]

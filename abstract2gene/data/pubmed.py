@@ -16,17 +16,17 @@ import numpy as np
 import pandas as pd
 from pubnet import PubNet
 
+from abstract2gene.storage import _storage_factory, default_cache_dir
+from abstract2gene.storage import delete_from_cache as _delete_cache
+from abstract2gene.storage import list_cache as _list_cache
+
 from ._downloader import FtpDownloader
-from ._utils import default_cache_dir
-from ._utils import delete_from_cache as _delete_cache
-from ._utils import list_cache as _list_cache
-from ._utils import storage_factory
 
 _NAME = "pubmed"
 _FILES = ["gene2pubmed.gz", "gene_info.gz"]
 
-list_cache = storage_factory(_list_cache, _NAME)
-delete_from_cache = storage_factory(_delete_cache, _NAME)
+list_cache = _storage_factory(_list_cache, _NAME)
+delete_from_cache = _storage_factory(_delete_cache, _NAME)
 
 
 class PubmedDownloader(FtpDownloader):

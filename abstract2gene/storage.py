@@ -5,7 +5,7 @@ __all__ = [
     "list_data",
     "delete_from_cache",
     "delete_from_data",
-    "storage_factory",
+    "_storage_factory",
 ]
 
 import os
@@ -30,7 +30,7 @@ P = ParamSpec("P")
 T = TypeVar("T")
 
 
-def storage_factory(func: Callable[P, T], subdir: str) -> Callable[P, T]:
+def _storage_factory(func: Callable[P, T], subdir: str) -> Callable[P, T]:
     def wrapper(*args: P.args, **kwds: P.kwargs) -> T:
         if len(args) != 0:
             new_args = (os.path.join(subdir, args[0]),) + args[1:]  # type: ignore[call-overload]

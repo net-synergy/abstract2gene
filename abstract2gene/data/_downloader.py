@@ -7,7 +7,7 @@ import os
 from ftplib import FTP
 from typing import Iterable
 
-from ._utils import default_cache_dir
+from abstract2gene.storage import default_cache_dir
 
 
 class FtpDownloader:

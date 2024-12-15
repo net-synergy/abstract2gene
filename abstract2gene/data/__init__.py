@@ -2,7 +2,8 @@
 
 __all__ = ["download", "default_cache_dir", "default_data_dir"]
 
-from ._utils import default_cache_dir, default_data_dir
+from abstract2gene.storage import default_cache_dir, default_data_dir
+
 from .bioc import BiocDownloader
 from .pubmed import PubmedDownloader
 from .pubtator import PubtatorDownloader
