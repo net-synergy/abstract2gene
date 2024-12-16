@@ -36,10 +36,9 @@ delete_from_cache = _storage_factory(_delete_cache, _NAME)
 class BiocDownloader(FtpDownloader):
     """Download gene files from Pubtator FTP server."""
 
-    def __init__(self, cache_dir: str | None = None, prompt: bool = True):
-        self.prompt = prompt
+    def __init__(self, **kwds):
         self.file_numbers = list(range(10))
-        super().__init__(self.files, cache_dir)
+        super().__init__(self.files, **kwds)
 
     @property
     def name(self) -> str:
@@ -77,8 +76,7 @@ class BiocDownloader(FtpDownloader):
         Download all files? (y/N)
         """
 
-        all_files = len(set(range(10)).difference(set(self.file_numbers))) == 0
-        if self.prompt and all_files and input(msg).lower() != "y":
+        if input(msg).lower() != "y":
             raise RuntimeError("Download canceled by user.")
 
         return super().download()

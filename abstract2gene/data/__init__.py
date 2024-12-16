@@ -9,7 +9,9 @@ from .pubmed import PubmedDownloader
 from .pubtator import PubtatorDownloader
 
 
-def download(content: str, cache_dir: str | None = None) -> None:
+def download(
+    content: str, cache_dir: str | None = None, check_remote: bool = False
+) -> list[str]:
     """Download content from online FTP server.
 
     If content already downloaded, checks for newer version and, if local files
@@ -23,10 +25,17 @@ def download(content: str, cache_dir: str | None = None) -> None:
     cache_dir : str, optional
         Where to download and check for content. Uses `default_cache_dir` by
         default.
+    check_remote : bool, default True
+        Whether to connect to the remote server and download files. If True,
+        this checks for cached files, downloads missing files and cached files
+        that are older than server's. If False,returns the cached files without
+        checking for updates from the server. An error is raised if any file is
+        missing from the cache. This must be set to True the first time this
+        command is run to cache the files initially. When set to False,
 
     Returns
     -------
-    None
+    files : list of file paths.
 
     See Also
     --------
@@ -38,5 +47,8 @@ def download(content: str, cache_dir: str | None = None) -> None:
         "pubtator": PubtatorDownloader,
         "bioc": BiocDownloader,
     }
-    downloader = downloaders[content](cache_dir)
-    downloader.download()
+    downloader = downloaders[content](
+        cache_dir=cache_dir, check_remote=check_remote
+    )
+
+    return downloader.download()

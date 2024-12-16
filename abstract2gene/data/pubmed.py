@@ -32,8 +32,8 @@ delete_from_cache = _storage_factory(_delete_cache, _NAME)
 class PubmedDownloader(FtpDownloader):
     """Download gene files from Pubmed FTP server."""
 
-    def __init__(self, cache_dir: str | None = None):
-        super().__init__(_FILES, cache_dir)
+    def __init__(self, **kwds):
+        super().__init__(_FILES, **kwds)
 
     @property
     def name(self) -> str:
