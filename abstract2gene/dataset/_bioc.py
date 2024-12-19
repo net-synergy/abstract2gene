@@ -21,7 +21,7 @@ from ._dataset import DataSet
 def bioc2dataset(
     files: Iterable[int],
     ann_type="Gene",
-    embed_bs: int = 64,
+    embed_bs: int = 50,
     max_tokens: int = 512,
     min_occurances: int = 50,
     **kwds,
@@ -92,8 +92,11 @@ class _BiocParser:
                 with tarfile.open(archive, "r") as tar:
                     for file in files:
                         fd = tar.extractfile(file_template.format(file))
-                        pmids, abstracts = self._parse_file(fd)
-                        self._embed(pmids, abstracts, pbar)
+                        try:
+                            pmids, abstracts = self._parse_file(fd)
+                            self._embed(pmids, abstracts, pbar)
+                        except ValueError:
+                            pass
 
                         fd.close()
                         pbar.update()
