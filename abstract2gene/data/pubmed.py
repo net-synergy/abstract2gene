@@ -132,7 +132,7 @@ def add_gene_edges(
                 raise RuntimeError("Need to download data files.")
 
             accepted_download = True
-            downloader = PubmedDownloader(cache_dir)
+            downloader = PubmedDownloader(cache_dir=cache_dir)
             downloader.download()
 
     table, metadata = _read_pubmed_data(cache_dir)

@@ -5,6 +5,7 @@ For attaching publication annotations to PubNet objects.
 
 __all__ = [
     "PubtatorDownloader",
+    "read_pubtator_data",
     "add_gene_edges",
     "list_cache",
     "delete_from_cache",
@@ -48,6 +49,26 @@ class PubtatorDownloader(FtpDownloader):
         return "/pub/lu/PubTator3"
 
 
+def read_pubtator_data(edge_path) -> pd.DataFrame:
+    table = pd.read_table(
+        edge_path,
+        header=None,
+        names=["PMID", "Type", "NCBIGeneID", "GeneSymbol", "Resource"],
+        usecols=["PMID", "NCBIGeneID", "GeneSymbol"],
+        memory_map=True,
+        low_memory=False,
+    )
+    table = table[pd.notna(table["NCBIGeneID"])]
+    table["NCBIGeneID"] = (
+        table["NCBIGeneID"]
+        .astype("str")
+        .map(lambda x: x.split(";")[0])
+        .astype("int64")
+    )
+
+    return table
+
+
 def add_gene_edges(
     net: PubNet,
     replace: bool = False,
@@ -68,26 +89,6 @@ def add_gene_edges(
         `default_cache_dir()`).
 
     """
-
-    def _read_pubtator_data(edge_path) -> pd.DataFrame:
-        table = pd.read_table(
-            edge_path,
-            header=None,
-            names=["PMID", "Type", "NCBIGeneID", "GeneSymbol", "Resource"],
-            usecols=["PMID", "NCBIGeneID", "GeneSymbol"],
-            memory_map=True,
-            low_memory=False,
-        )
-        table = table[pd.notna(table["NCBIGeneID"])]
-        table["NCBIGeneID"] = (
-            table["NCBIGeneID"]
-            .astype("str")
-            .map(lambda x: x.split(";")[0])
-            .astype("int64")
-        )
-
-        return table
-
     cache_dir = cache_dir or default_cache_dir()
     if "Gene-Publication" in net.edges:
         if replace:
@@ -102,10 +103,10 @@ def add_gene_edges(
         if input(msg).lower() == "n":
             raise RuntimeError("Need to download data files.")
 
-        downloader = PubtatorDownloader(cache_dir)
+        downloader = PubtatorDownloader(cache_dir=cache_dir)
         downloader.download()
 
-    table = _read_pubtator_data(edge_path)
+    table = read_pubtator_data(edge_path)
     node_data = table[
         [col for col in table.columns if col not in ("PMID", "TaxID")]
     ]

@@ -33,7 +33,7 @@ def net2dataset(
 
     Any other keyword arguments will be based on to the DataSet constructor.
     """
-    feature_names = net.get_node("Publication").feature_vector(feature_name)
+    sample_names = net.get_node("Publication").feature_vector(feature_name)
     embeddings_edge = net.get_edge(features, "Publication")
     n_features = np.sum(embeddings_edge["Publication"] == 0)
     embeddings = embeddings_edge.feature_vector("embedding").reshape(
@@ -71,7 +71,7 @@ def net2dataset(
     return DataSet(
         embeddings,
         label_vec,
-        feature_names,
+        sample_names,
         label_names,
         **kwds,
     )

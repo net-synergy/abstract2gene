@@ -53,30 +53,14 @@ class BiocDownloader(FtpDownloader):
         return "/pub/lu/PubTator3"
 
     @property
-    def file_numbers(self) -> list[int]:
+    def file_numbers(self) -> set[int]:
         return self._file_numbers
 
     @file_numbers.setter
     def file_numbers(self, numbers: int | Iterable[int]):
         if isinstance(numbers, int):
-            self._file_numbers = [numbers]
+            self._file_numbers = {numbers}
         else:
-            self._file_numbers = list(numbers)
+            self._file_numbers = set(numbers)
 
         self.files = [_BIOC_TEMPLATE.format(i) for i in self._file_numbers]
-
-    def download(self) -> list[str]:
-        msg = f"""
-        The BioCXML files are ~16GB each for a total of {16 *
-        len(self.file_numbers)}GB total (compressed). It may be possible and
-        preferred to only download a subset of all files. To download a subset
-        of files set this class's `file_numbers` to the files desired then
-        rerun download.
-
-        Download all files? (y/N)
-        """
-
-        if input(msg).lower() != "y":
-            raise RuntimeError("Download canceled by user.")
-
-        return super().download()

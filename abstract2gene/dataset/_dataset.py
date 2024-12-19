@@ -7,6 +7,7 @@ __all__ = ["DataSet", "load_dataset", "list_datasets", "delete_dataset"]
 import os
 from typing import Any, Iterable
 
+import jax
 import jax.numpy as jnp
 import numpy as np
 
@@ -15,14 +16,14 @@ from abstract2gene.storage import _storage_factory, default_data_dir
 
 from ..typing import Batch, Features, Labels, Names
 
-InFeatures = np.ndarray[Any, np.dtype[np.double]]
-InLabels = np.ndarray[Any, np.dtype[np.bool_]]
+InFeatures = np.ndarray[Any, np.dtype[np.double]] | jax.Array
+InLabels = np.ndarray[Any, np.dtype[np.bool_]] | jax.Array
 
 _NAME = "dataset"
 _DEFALUT_DATA_DIR = default_data_dir(_NAME)
 
-list_datasets = _storage_factory(storage.list_cache, _NAME)
-delete_dataset = _storage_factory(storage.delete_from_cache, _NAME)
+list_datasets = _storage_factory(storage.list_data, _NAME)
+delete_dataset = _storage_factory(storage.delete_from_data, _NAME)
 
 
 class DataSet:
@@ -31,6 +32,9 @@ class DataSet:
     Data is split into training, testing, and validation sets and batches
     (features, labels) can be iterated over with the corresponding methods:
     `test`, `train`, `validate`.
+
+    Batch data consists only of labeled data. To get unlabeled data, use
+    `self.unlabeled`.
 
     Labels for each batch is a column vector of batch_size x 1.
     Label is True for half the samples and False for the other half.
@@ -56,7 +60,7 @@ class DataSet:
         self,
         features: InFeatures,
         labels: InLabels,
-        feature_names: Names,
+        sample_names: Names,
         label_names: Names,
         train_test_val_split: tuple[float, float, float] = (0.7, 0.2, 0.1),
         batch_size: int = 64,
@@ -71,7 +75,7 @@ class DataSet:
             Should be in the form n_samples x n_features
         labels : ndarray[Any, dtype[bool]]
             Should be in the form n_samples x n_labels
-        feature_names : ndarray (dtype str_ or object)
+        sample_names : ndarray (dtype str_ or object)
             One dimensional array of feature names (such as PMIDs)
         label_names : ndarray (dtype str_ or object)
             One dimensional array of label names (such as gene symbols)
@@ -87,7 +91,7 @@ class DataSet:
 
         """
         self.features = jnp.asarray(features)
-        self.feature_names = feature_names
+        self.sample_names = sample_names
         self.labels = jnp.asarray(labels)
         self.label_names = label_names
 
@@ -99,7 +103,7 @@ class DataSet:
 
         self._seed = seed
         self._rng: np.random.Generator = np.random.default_rng(seed)
-        self._feature_names = np.asarray([""], dtype=np.dtype(np.str_))
+        self._sample_names = np.asarray([""], dtype=np.dtype(np.str_))
         self._label_name = np.asarray([""], dtype=np.dtype(np.str_))[0]
 
         self.reshuffle()
@@ -118,12 +122,13 @@ class DataSet:
         self.features = self.features[mix_feats_idx, :]
         self.labels = self.labels[mix_feats_idx, :]
 
-        mix_label_idx = self._rng.permutation(self.n_labels)
+        mix_label_idx = self._rng.permutation(np.arange(self.n_labels))
         self.labels = self.labels[:, mix_label_idx]
 
-        self.feature_names = self.feature_names[mix_feats_idx]
+        self.sample_names = self.sample_names[mix_feats_idx]
         self.label_names = self.label_names[mix_label_idx]
 
+        self._unlabeled_mask = self.labels.sum(axis=1) == 0
         self._masks = self._make_masks(self._split)
 
     def _make_masks(
@@ -229,13 +234,18 @@ class DataSet:
         """Return the size of the validation set."""
         return self._masks["validate"].sum()
 
+    @property
+    def unlabeled(self) -> jax.Array:
+        """Return features for unlabeled samples."""
+        return self.features[self._unlabeled_mask, :]
+
     def batch_label_name(self) -> str:
         """Return the current batch's label name."""
         return self._label_name
 
-    def batch_feature_names(self) -> Names:
+    def batch_sample_names(self) -> Names:
         """Return the names for the batch's samples."""
-        return self._feature_names
+        return self._sample_names
 
     def train(self) -> Iterable[Batch]:
         """Return random batches of training data."""
@@ -267,10 +277,12 @@ class DataSet:
     ) -> Batch:
         samples = np.arange(indices.shape[0])
         samples_true = self._rng.permutation(samples[indices])
-        samples_false = self._rng.permutation(samples[np.logical_not(indices)])
+        samples_false = self._rng.permutation(
+            samples[np.logical_not(indices or self._unlabeled_mask)]
+        )
         mini_batch_size = batch_size // 2
 
-        self._feature_names = self.feature_names[
+        self._sample_names = self.sample_names[
             np.concat(
                 (
                     samples_true[:mini_batch_size],
@@ -346,7 +358,7 @@ class DataSet:
         with open(os.path.join(data_dir, name), "wb") as f:
             np.save(f, self.features)
             np.save(f, self.labels)
-            np.save(f, self.feature_names)
+            np.save(f, self.sample_names)
             np.save(f, self.label_names)
 
 
@@ -373,4 +385,10 @@ def load_dataset(name: str, data_dir: str | None = None, **kwds) -> DataSet:
     """
     data_dir = data_dir or _DEFALUT_DATA_DIR
     with open(os.path.join(data_dir, name), "rb") as f:
-        return DataSet(np.load(f), np.load(f), np.load(f), np.load(f), **kwds)
+        return DataSet(
+            np.load(f),
+            np.load(f),
+            np.load(f, allow_pickle=True),
+            np.load(f, allow_pickle=True),
+            **kwds,
+        )

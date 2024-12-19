@@ -4,6 +4,7 @@ from pubnet.download import from_pubmed
 
 import abstract2gene as a2g
 from abstract2gene.data import pubtator
+from abstract2gene.dataset import net2dataset
 
 GENE_ANNOTATIONS = "pubtator"
 GRAPH_NAME = f"{GENE_ANNOTATIONS}_genes"
@@ -47,9 +48,10 @@ def remove_duplicate_publications(net: PubNet, node_name: str) -> PubNet:
 net = remove_duplicate_publications(net, "Abstract")
 
 a2g.data.download(f"{GENE_ANNOTATIONS}_genes")
-pubtator.add_gene_edges(GENE_ANNOTATIONS, net, replace=True)
+pubtator.add_gene_edges(net, replace=True)
 
 sanitize.abstract(net)
 text_transformations.specter(net, "Abstract", batch_size=128, max_tokens=512)
 
-net.save_graph(file_format="binary", overwrite=True)
+dataset = net2dataset(net, min_occurrences=50)
+dataset.save("pubnet_pubtator")
