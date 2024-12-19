@@ -16,7 +16,7 @@ scikit-learn = "^1.5.2"
 jax = "^0.4.35"
 flax = "^0.10.2"
 optax = "^0.2.4"
-synstore = "^0.1.0"
+synstore = {version = "^0.1", source = "testpypi", allow-prereleases = true}
 numpy = "^2.2.0"
 tqdm = "^4.67.1"
 transformers = "^4.47.1"

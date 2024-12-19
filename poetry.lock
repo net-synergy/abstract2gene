@@ -2805,17 +2805,22 @@ tests = ["cython", "littleutils", "pygments", "pytest", "typeguard"]
 
 [[package]]
 name = "synstore"
-version = "0.1.1"
+version = "0.1.2a0"
 description = "Consistent storage for net-synergy projects."
 optional = false
-python-versions = "<4.0,>=3.10"
+python-versions = ">=3.10,<4.0"
 files = [
-    {file = "synstore-0.1.1-py3-none-any.whl", hash = "sha256:5b515b1bc5ec6c80aa3cfd9e7ba116482c2f2461341f9fb60137f97c8f22109c"},
-    {file = "synstore-0.1.1.tar.gz", hash = "sha256:b7a829464f85898d545ef546d0fa684388bd73346c6d1c7e92d65081e090bcea"},
+    {file = "synstore-0.1.2a0-py3-none-any.whl", hash = "sha256:18a96ea4a881630d57c1bc166116bcbb6e0ed15d8bb602e219b38aa8788e9378"},
+    {file = "synstore-0.1.2a0.tar.gz", hash = "sha256:05e791f59ecc7ef080fa4c9ce03d09ba78a8ec782cf57476593b1faebe65bc0a"},
 ]
 
 [package.dependencies]
 platformdirs = ">=4.3.6,<5.0.0"
+
+[package.source]
+type = "legacy"
+url = "https://test.pypi.org/simple"
+reference = "testpypi"
 
 [[package]]
 name = "tensorstore"
@@ -3221,4 +3226,4 @@ type = ["pytest-mypy"]
 [metadata]
 lock-version = "2.0"
 python-versions = "^3.10,<3.13"
-content-hash = "e1ca99b9d731e8f2517624bf1dbc5be5e4a744db28a7c7694d4708d107cc0900"
+content-hash = "f413babccbc341af7800b0d2d3dceef54b40b254cf991ee947a91c8461794c21"
