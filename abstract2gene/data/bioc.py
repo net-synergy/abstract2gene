@@ -53,7 +53,7 @@ class BiocDownloader(FtpDownloader):
         return "/pub/lu/PubTator3"
 
     @property
-    def file_numbers(self) -> set[int]:
+    def file_numbers(self) -> Iterable[int]:
         return self._file_numbers
 
     @file_numbers.setter

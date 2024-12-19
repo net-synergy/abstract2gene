@@ -2,10 +2,11 @@
 
 __all__ = ["bioc2dataset"]
 
+import os
 import tarfile
 import xml.etree.ElementTree as ET
 from collections import defaultdict
-from typing import Any, Iterable
+from typing import Any, Callable, Iterable
 
 import jax
 import jax.numpy as jnp
@@ -19,14 +20,76 @@ from ._dataset import DataSet
 
 
 def bioc2dataset(
-    files: Iterable[int],
+    archives: Iterable[int],
+    n_files: int = -1,
     ann_type="Gene",
     embed_bs: int = 50,
     max_tokens: int = 512,
-    min_occurances: int = 50,
+    min_occurrences: int = 50,
     **kwds,
 ) -> DataSet:
-    parser = _BiocParser(files, ann_type, embed_bs, max_tokens, min_occurances)
+    """Create a dataset from Pubtator's BioC archive files.
+
+    Pubtator's archive files contain abstracts plus annotations. Using these
+    files instead of the pubtator gene files allows getting abstract text from
+    BioC and masking the selecting annotation type from the abstracts before
+    embedding the abstracts to ensure the models aren't learning specific
+    symbols used for prediction.
+
+    Parameters
+    ----------
+    archives : list[int]
+        Which archives to use. There are 10 archives, each contains files
+        ending with a given digit (archive '0' contains all numbered files
+        where zero is the last digit). By default parses all files contained in
+        each provided archive. (Note: archives are ~16GB each to download and
+        have ~1e6 publications each).
+    n_files : int, optional
+        The number of files to parse per archive. By default, parses all files.
+        This is most sensible when using only a single archive to create a
+        small dataset. Each file contains 100 abstracts and there is about 1e4
+        files per archive.
+    ann_type : str, default "Gene"
+        Which annotation type to mask and use for labels. Values should be
+        exactly as presented in the XML files. Only annotations for abstract
+        passages are used not those from titles are full text. Annotations for
+        the selected annotation type are stripped from the abstracts before
+        embedding.
+    embed_bs : int, default 50
+        Batch size used for embedding. Larger batch sizes may result in faster
+        processing but can exhaust memory. 50 was chosen as default since it
+        divides the number of publications in a file and the model is passed
+        all abstracts from a file at once. Note this is unrelated to the
+        resulting dataset's batch size.
+    max_tokens : int, default 512
+        The number of tokens the tokenizer will return. The tokenizer creates
+        arrays of tokens with exactly this many tokens, truncated longer
+        abstracts and padding smaller abstracts. This allows the model to run
+        on multiple abstracts at once. Larger values take longer to process but
+        smaller values risk dropping information.
+    min_occurrences : int, default 50
+        The minimum number of publications an annotation ID needs to be tagged
+        on to be used. Ideally this would be 0 but a large number of annotation
+        IDs are tagged in too few publications to be used to create a batch and
+        template leading to a large increase in the label matrix's number of
+        elements without adding any value and may lead to exhausting memory.
+        The minimum value should likely be the intended batch size plus label
+        size for the resulting dataset (64 + 32 by default). Giving a lower
+        value retains more labels if the batch size and template size of the
+        dataset is reduced at a later time.
+    **kwds : dict[str, Any]
+        Keyword arguments to be passed to the DataSet constructor.
+
+    Returns
+    -------
+    dataset : a2g.dataset.DataSet
+        A dataset containing the abstract embeddings for each publication and a
+        list of labels.
+
+    """
+    parser = _BiocParser(
+        archives, n_files, ann_type, embed_bs, max_tokens, min_occurrences
+    )
     parser.parse()
     features, labels = parser.to_arrays()
     return DataSet(
@@ -41,57 +104,54 @@ def bioc2dataset(
 class _BiocParser:
     def __init__(
         self,
-        files: Iterable[int],
+        archives: Iterable[int],
+        n_files: int,
         ann_type: str,
         batch_size: int,
         max_tokens: int,
-        min_occurances: int,
+        min_occurrences: int,
     ):
-        self.archives = self._tar2files(files)
+        self.archives, self.iterfiles = self._get_archives(archives, n_files)
         self.ann_type = ann_type
         self.batch_size = batch_size
         self.max_tokens = max_tokens
-        self.min_occurances = min_occurances
+        self.min_occurrences = min_occurrences
         self.tokenizer = AutoTokenizer.from_pretrained("allenai/specter")
         self.model = jax.jit(FlaxAutoModel.from_pretrained("allenai/specter"))
         self._pmid2features: dict[str, jnp.ndarray] = {}
         self._pmid2ann: dict[str, list[str]] = {}
         self._pub2idx: dict[str, int] = {}
         self._ann2idx: dict[str, int] = {}
-        self._ann_occurances: dict[str, int] = defaultdict(int)
+        self._ann_occurrences: dict[str, int] = defaultdict(int)
         self._ann_count = 0
         self._pub_count = 0
         self._idx2symbol: dict[int, str] = {}
 
-    def _tar2files(self, files: Iterable[int]) -> dict[str, list[int]]:
-        """Generate dictionary mapping tar files to list of files contained."""
-        file_map = defaultdict(list)
-        for f in files:
-            file_map[int(str(f)[-1])].append(f)
+    def _get_archives(
+        self, file_numbers: Iterable[int], n_files: int
+    ) -> tuple[list[str], Callable[[tarfile.TarFile], Iterable[str]]]:
+        """Find the local path to the BioC archives."""
         downloader = BiocDownloader()
-        downloader.file_numbers = set(file_map.keys())
+        downloader.file_numbers = file_numbers
         archives = downloader.download()
 
-        out = {}
-        for i in file_map:
-            archive = [
-                archive
-                for archive in archives
-                if archive.endswith(f"{i}.tar.gz")
-            ][0]
-            out[archive] = file_map[i]
+        def iterfiles(tar: tarfile.TarFile) -> Iterable[str]:
+            if n_files < 0:
+                return tar.getnames()
 
-        return out
+            return tar.getnames()[:n_files]
+
+        return (archives, iterfiles)
 
     def parse(self):
-        file_template = "output/BioCXML/{}.BioC.XML"
-        total_files = sum((len(fs) for fs in self.archives.values()))
-
-        with tqdm(total=total_files, desc="Specter") as pbar:
-            for archive, files in self.archives.items():
-                with tarfile.open(archive, "r") as tar:
-                    for file in files:
-                        fd = tar.extractfile(file_template.format(file))
+        print(f"Starting embedding for {len(self.archives)} archives.")
+        for archive in self.archives:
+            with tarfile.open(archive, "r") as tar:
+                desc = os.path.basename(archive)
+                total = len(self.iterfiles(tar))
+                with tqdm(total=total, desc=desc) as pbar:
+                    for file in self.iterfiles(tar):
+                        fd = tar.extractfile(file)
                         try:
                             pmids, abstracts = self._parse_file(fd)
                             self._embed(pmids, abstracts, pbar)
@@ -111,7 +171,7 @@ class _BiocParser:
             self._pub_count += 1
             self._pmid2ann[pmid] = [ann_id for ann_id, _ in annotations]
             for ann_id, _ in annotations:
-                self._ann_occurances[ann_id] += 1
+                self._ann_occurrences[ann_id] += 1
             pmids.append(pmid)
             abstracts.append(abstract)
 
@@ -270,7 +330,7 @@ class _BiocParser:
         self,
     ) -> tuple[jax.Array, np.ndarray[Any, np.dtype[np.bool]]]:
         ann_mask = (
-            np.asarray(list(self._ann2idx.values())) >= self.min_occurances
+            np.asarray(list(self._ann2idx.values())) >= self.min_occurrences
         )
         indices = np.cumsum(ann_mask)
         labels = np.zeros(
@@ -278,7 +338,7 @@ class _BiocParser:
         )
         for pmid, anns in self._pmid2ann.items():
             for ann in anns:
-                if self._ann_occurances[ann] < self.min_occurances:
+                if self._ann_occurrences[ann] < self.min_occurrences:
                     continue
 
                 labels[self._pub2idx[pmid], indices[self._ann2idx[ann]]] = True
@@ -293,6 +353,6 @@ class _BiocParser:
 
     def annotation_names(self) -> np.ndarray[Any, np.dtype[np.str_]]:
         ann_mask = (
-            np.asarray(list(self._ann2idx.values())) >= self.min_occurances
+            np.asarray(list(self._ann2idx.values())) >= self.min_occurrences
         )
         return np.asarray(list(self._idx2symbol.values()))[ann_mask]
