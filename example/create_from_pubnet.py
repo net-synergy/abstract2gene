@@ -1,3 +1,5 @@
+import os
+
 import numpy as np
 from pubnet import PubNet, sanitize, text_transformations
 from pubnet.download import from_pubmed
@@ -10,6 +12,20 @@ GENE_ANNOTATIONS = "pubtator"
 GRAPH_NAME = f"{GENE_ANNOTATIONS}_genes"
 START = 1200
 N_FILES = 3
+
+os.environ["XLA_FLAGS"] = (
+    "--xla_gpu_enable_triton_softmax_fusion=true "
+    "--xla_gpu_enable_triton_gemm=true "
+    "--xla_gpu_graph_level=0 "
+)
+
+os.environ.update(
+    {
+        "NCCL_LL128_BUFFSIZE": "-2",
+        "NCCL_LL_BUFFSIZE": "-2",
+        "NCCL_PROTO": "SIMPLE,LL,LL128",
+    }
+)
 
 node_list = [
     {"name": "publication", "value": "date"},
