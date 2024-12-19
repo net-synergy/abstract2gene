@@ -85,15 +85,18 @@ class _BiocParser:
 
     def parse(self):
         file_template = "output/BioCXML/{}.BioC.XML"
-        for archive, files in self.archives.items():
-            with tarfile.open(archive, "r") as tar:
-                for file in files:
-                    fd = tar.extractfile(file_template.format(file))
-                    pmids, abstracts = self._parse_file(fd)
-                    with tqdm(total=len(pmids), desc=str(file)) as pbar:
+        total_files = sum((len(fs) for fs in self.archives.values()))
+
+        with tqdm(total=total_files, desc="Specter") as pbar:
+            for archive, files in self.archives.items():
+                with tarfile.open(archive, "r") as tar:
+                    for file in files:
+                        fd = tar.extractfile(file_template.format(file))
+                        pmids, abstracts = self._parse_file(fd)
                         self._embed(pmids, abstracts, pbar)
 
-                    fd.close()
+                        fd.close()
+                        pbar.update()
 
     def _parse_file(self, fd) -> tuple[list[str], list[str]]:
         tree = ET.parse(fd)
@@ -257,7 +260,6 @@ class _BiocParser:
             ):
                 self._pmid2features[pmid] = embedding.reshape((1, -1))
 
-            pbar.update(end_idx - start_idx)
             start_idx = end_idx
             end_idx = min(end_idx + self.batch_size, len(abstracts))
 
