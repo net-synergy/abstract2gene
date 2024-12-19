@@ -288,9 +288,9 @@ def test(
     n_tests = min(max_num_tests, data.n_test)
 
     loss = 0.0
-    for batch in data.train():
+    for batch in data.test():
         symbol = data.batch_label_name()
-        pmids = data.batch_feature_names()
+        pmids = data.batch_sample_names()
         loss += _test_label(model, batch, symbol, pmids, save_results)
 
     if save_results and not os.path.exists(RESULTS_TABLE):
@@ -381,27 +381,41 @@ class ModelMultiLayer(Model, nnx.Module):
         *args,
         dims: tuple[int, ...],
         seed: int = 0,
-        dropout: float = 0.1,
+        dropout: tuple[float, float] = (0.2, 0.1),
         **kwds,
     ):
+        """Multi-layer perceptron for predicting labels.
+
+        Note: final step is dot product between samples and templates so the
+        number of dimensions of the last layer is not the number of dimensions
+        of the output. The true output dimensionality is determine by the
+        number of rows in templates.
+        """
         super().__init__(*args, **kwds)
         self._rng = nnx.Rngs(seed)
         self.layers = [
             nnx.Linear(dims[i], dims[i + 1], rngs=self._rng)
             for i in range(len(dims) - 1)
         ]
-        self.dropout = nnx.Dropout(rate=dropout, rngs=self._rng)
+        self.dropouts = [
+            nnx.Dropout(p, rngs=self._rng)
+            for p in np.linspace(*dropout, num=len(dims))
+        ]
+        self.activation = nnx.relu
 
     def _net(self, x):
-        x = self.dropout(self.layers[0](x))
-        for layer in self.layers[1:]:
-            x = layer(x)
+        for dropout, layer in zip(self.dropouts, self.layers):
+            x = self.activation(dropout(layer(x)))
 
-        return nnx.gelu(x)
+        return x
 
     def _predict(self, samples, templates):
         samples = self._net(samples)
+        samples /= jnp.linalg.norm(samples, axis=1)
+
         templates = self._net(templates)
+        templates /= jnp.linalg.norm(templates, axis=1)
+
         return _ml_predict(samples, templates)
 
     def loss(self, samples, templates, labels):
