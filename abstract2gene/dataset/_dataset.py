@@ -107,41 +107,17 @@ class DataSet:
         self._sample_names = np.asarray([""], dtype=np.dtype(np.str_))
         self._label_name = np.asarray([""], dtype=np.dtype(np.str_))[0]
 
+        self._masks: dict[str, np.ndarray[Any, np.dtype[np.bool]]] = {}
+        self._unlabeled_mask: np.ndarray[Any, np.dtype[np.bool]] = np.asarray(
+            []
+        )
         self.reshuffle()
 
     def reshuffle(self) -> None:
-        """Resample the data to get a new train-test-validate split.
-
-        Reshuffles the masks as well as sample and label order.
-
-        Since the features and labels get shuffled, resetting the RNG before
-        shuffling will not reproduce the original state. The only way to
-        reproduce the original state after the data has been shuffled is to
-        recreate the dataset with the same seed and original data.
-        """
-        n_samples, n_labels = self.labels.shape
-        mix_feats_idx = self._rng.permutation(n_samples)
-        self.features = self.features[mix_feats_idx, :]
-        self.labels = self.labels[mix_feats_idx, :]
-
-        mix_label_idx = self._rng.permutation(np.arange(n_labels))
-        self.labels = self.labels[:, mix_label_idx]
-
-        self.sample_names = self.sample_names[mix_feats_idx]
-        self.label_names = self.label_names[mix_label_idx]
-
-        self._unlabeled_mask = self.labels.sum(axis=1) == 0
-        self._masks = self._make_masks(self._split)
-
-    def _make_masks(
-        self, split: tuple[float, float, float]
-    ) -> dict[str, np.ndarray[Any, np.dtype[np.bool_]]]:
-        """Randomly sample labels to use in training, testing, and validation.
-
-        Returns the training and test masks. Validation labels are those not in
-        either training or testing.
-        """
+        """Reshuffle the training, test, and validation sets."""
         tol = 1e-5
+        split = self._split
+
         assert sum(split) > (1 - tol) and sum(split) < (1 + tol)
 
         min_occurance = self.batch_size + self.template_size
@@ -160,7 +136,13 @@ class DataSet:
         )
         mask[label_mask] = self._rng.permutation(mask[label_mask])
 
-        return {"train": mask == 1, "test": mask == 2, "validate": mask == 3}
+        self._masks = {
+            "train": mask == 1,
+            "test": mask == 2,
+            "validate": mask == 3,
+        }
+
+        self._unlabeled_mask = np.logical_not(label_mask)
 
     @property
     def batch_size(self) -> int:
@@ -269,7 +251,7 @@ class DataSet:
         labels = self.labels[:, self._masks[task]]
         label_pool = self._rng.permutation(np.arange(labels.shape[1]))
         for label_idx in label_pool:
-            self._label_name = self.label_names[label_idx]
+            self._label_name = self.label_names[self._masks[task]][label_idx]
             yield self._split_labels(
                 labels[:, [label_idx]].toarray().squeeze(), self.batch_size
             )
