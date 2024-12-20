@@ -411,10 +411,10 @@ class ModelMultiLayer(Model, nnx.Module):
 
     def _predict(self, samples, templates):
         samples = self._net(samples)
-        samples /= jnp.linalg.norm(samples, axis=1)
+        samples /= jnp.linalg.norm(samples, axis=1, keepdims=True)
 
         templates = self._net(templates)
-        templates /= jnp.linalg.norm(templates, axis=1)
+        templates /= jnp.linalg.norm(templates, axis=1, keepdims=True)
 
         return _ml_predict(samples, templates)
 
