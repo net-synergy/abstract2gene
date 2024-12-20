@@ -139,11 +139,14 @@ class _BiocParser:
                 with tqdm(total=total, desc=desc) as pbar:
                     for file in self.iterfiles(tar):
                         fd = tar.extractfile(file)
-                        try:
-                            pmids, abstracts = self._parse_file(fd)
-                            self._embed(pmids, abstracts, pbar)
-                        except ValueError:
-                            pass
+                        pmids, abstracts = self._parse_file(fd)
+
+                        if len(pmids) == 0:
+                            # If an entire file is malformed, may end up with
+                            # no data to pass to embed.
+                            continue
+
+                        self._embed(pmids, abstracts, pbar)
 
                         fd.close()
                         pbar.update()
@@ -153,7 +156,10 @@ class _BiocParser:
         pmids: list[str] = []
         abstracts: list[str] = []
         for doc in tree.findall("document"):
-            pmid, abstract, annotations = self._parse_doc(doc)
+            try:
+                pmid, abstract, annotations = self._parse_doc(doc)
+            except (ValueError, ET.ParseError):
+                continue
             self._pub2idx[pmid] = self._pub_count
             self._pub_count += 1
             self._pmid2ann[pmid] = [ann_id for ann_id, _ in annotations]
