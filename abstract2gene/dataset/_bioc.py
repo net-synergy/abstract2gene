@@ -11,6 +11,7 @@ from typing import Any, Callable, Iterable
 import jax
 import jax.numpy as jnp
 import numpy as np
+import scipy as sp
 from tqdm import tqdm
 from transformers import AutoTokenizer, FlaxAutoModel
 
@@ -25,7 +26,6 @@ def bioc2dataset(
     ann_type="Gene",
     embed_bs: int = 50,
     max_tokens: int = 512,
-    min_occurrences: int = 50,
     **kwds,
 ) -> DataSet:
     """Create a dataset from Pubtator's BioC archive files.
@@ -67,16 +67,6 @@ def bioc2dataset(
         abstracts and padding smaller abstracts. This allows the model to run
         on multiple abstracts at once. Larger values take longer to process but
         smaller values risk dropping information.
-    min_occurrences : int, default 50
-        The minimum number of publications an annotation ID needs to be tagged
-        on to be used. Ideally this would be 0 but a large number of annotation
-        IDs are tagged in too few publications to be used to create a batch and
-        template leading to a large increase in the label matrix's number of
-        elements without adding any value and may lead to exhausting memory.
-        The minimum value should likely be the intended batch size plus label
-        size for the resulting dataset (64 + 32 by default). Giving a lower
-        value retains more labels if the batch size and template size of the
-        dataset is reduced at a later time.
     **kwds : dict[str, Any]
         Keyword arguments to be passed to the DataSet constructor.
 
@@ -87,9 +77,7 @@ def bioc2dataset(
         list of labels.
 
     """
-    parser = _BiocParser(
-        archives, n_files, ann_type, embed_bs, max_tokens, min_occurrences
-    )
+    parser = _BiocParser(archives, n_files, ann_type, embed_bs, max_tokens)
     parser.parse()
     features, labels = parser.to_arrays()
     return DataSet(
@@ -109,15 +97,14 @@ class _BiocParser:
         ann_type: str,
         batch_size: int,
         max_tokens: int,
-        min_occurrences: int,
     ):
         self.archives, self.iterfiles = self._get_archives(archives, n_files)
         self.ann_type = ann_type
         self.batch_size = batch_size
         self.max_tokens = max_tokens
-        self.min_occurrences = min_occurrences
         self.tokenizer = AutoTokenizer.from_pretrained("allenai/specter")
         self.model = jax.jit(FlaxAutoModel.from_pretrained("allenai/specter"))
+
         self._pmid2features: dict[str, jnp.ndarray] = {}
         self._pmid2ann: dict[str, list[str]] = {}
         self._pub2idx: dict[str, int] = {}
@@ -329,30 +316,27 @@ class _BiocParser:
     def to_arrays(
         self,
     ) -> tuple[jax.Array, np.ndarray[Any, np.dtype[np.bool]]]:
-        ann_mask = (
-            np.asarray(list(self._ann2idx.values())) >= self.min_occurrences
-        )
-        indices = np.cumsum(ann_mask)
-        labels = np.zeros(
-            (len(self._pub2idx), ann_mask.sum()), np.dtype(jnp.bool)
-        )
+        n_edges = sum((len(anns) for anns in self._pmid2ann.values()))
+        label_data = np.ones((n_edges,), dtype=np.bool)
+        label_rows = np.zeros((n_edges,))
+        label_cols = np.zeros((n_edges,))
+        label_shape = (len(self._pub2idx), len(self._ann2idx))
+        count = 0
         for pmid, anns in self._pmid2ann.items():
             for ann in anns:
-                if self._ann_occurrences[ann] < self.min_occurrences:
-                    continue
-
-                labels[self._pub2idx[pmid], indices[self._ann2idx[ann]]] = True
+                label_rows[count] = self._pub2idx[pmid]
+                label_cols[count] = self._ann2idx[ann]
+                count += 1
 
         return (
             jnp.concat(tuple(self._pmid2features.values()), axis=0),
-            labels,
+            sp.sparse.coo_array(
+                (label_data, (label_rows, label_cols)), label_shape
+            ).tocsc(),
         )
 
     def sample_names(self) -> np.ndarray[Any, np.dtype[np.str_]]:
         return np.asarray(list(self._pub2idx.keys()))
 
     def annotation_names(self) -> np.ndarray[Any, np.dtype[np.str_]]:
-        ann_mask = (
-            np.asarray(list(self._ann2idx.values())) >= self.min_occurrences
-        )
-        return np.asarray(list(self._idx2symbol.values()))[ann_mask]
+        return np.asarray(list(self._idx2symbol.values()))

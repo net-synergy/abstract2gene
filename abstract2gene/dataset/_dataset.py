@@ -5,19 +5,20 @@ from __future__ import annotations
 __all__ = ["DataSet", "load_dataset", "list_datasets", "delete_dataset"]
 
 import os
-from typing import Any, Iterable
+from typing import Any, Iterable, TypeAlias
 
 import jax
 import jax.numpy as jnp
 import numpy as np
+import scipy as sp
 
 import abstract2gene.storage as storage
 from abstract2gene.storage import _storage_factory, default_data_dir
 
 from ..typing import Batch, Features, Labels, Names
 
-InFeatures = np.ndarray[Any, np.dtype[np.double]] | jax.Array
-InLabels = np.ndarray[Any, np.dtype[np.bool_]] | jax.Array
+InFeatures: TypeAlias = np.ndarray[Any, np.dtype[np.double]] | jax.Array
+InLabels: TypeAlias = sp.sparse.csc_array
 
 _NAME = "dataset"
 _DEFALUT_DATA_DIR = default_data_dir(_NAME)
@@ -92,7 +93,7 @@ class DataSet:
         """
         self.features = jnp.asarray(features)
         self.sample_names = sample_names
-        self.labels = jnp.asarray(labels)
+        self.labels = labels
         self.label_names = label_names
 
         # Set hidden properties to prevent repeatedly triggering reshuffle
@@ -118,11 +119,12 @@ class DataSet:
         reproduce the original state after the data has been shuffled is to
         recreate the dataset with the same seed and original data.
         """
-        mix_feats_idx = self._rng.permutation(self.n_samples)
+        n_samples, n_labels = self.labels.shape
+        mix_feats_idx = self._rng.permutation(n_samples)
         self.features = self.features[mix_feats_idx, :]
         self.labels = self.labels[mix_feats_idx, :]
 
-        mix_label_idx = self._rng.permutation(np.arange(self.n_labels))
+        mix_label_idx = self._rng.permutation(np.arange(n_labels))
         self.labels = self.labels[:, mix_label_idx]
 
         self.sample_names = self.sample_names[mix_feats_idx]
@@ -268,7 +270,9 @@ class DataSet:
         label_pool = self._rng.permutation(np.arange(labels.shape[1]))
         for label_idx in label_pool:
             self._label_name = self.label_names[label_idx]
-            yield self._split_labels(labels[:, label_idx], self.batch_size)
+            yield self._split_labels(
+                labels[:, [label_idx]].toarray().squeeze(), self.batch_size
+            )
 
     def _split_labels(
         self,
@@ -278,7 +282,9 @@ class DataSet:
         samples = np.arange(indices.shape[0])
         samples_true = self._rng.permutation(samples[indices])
         samples_false = self._rng.permutation(
-            samples[np.logical_not(indices or self._unlabeled_mask)]
+            samples[
+                np.logical_not(np.logical_or(indices, self._unlabeled_mask))
+            ]
         )
         mini_batch_size = batch_size // 2
 
@@ -307,14 +313,13 @@ class DataSet:
                 ],
                 :,
             ].mean(axis=0, keepdims=True),
-            indices[
-                np.concat(
-                    (
-                        samples_true[:mini_batch_size],
-                        samples_false[:mini_batch_size],
-                    )
-                ).reshape((mini_batch_size * 2, -1))
-            ],
+            jnp.concat(
+                (
+                    jnp.ones((mini_batch_size, 1), dtype=jnp.bool),
+                    jnp.zeros((mini_batch_size, 1), dtype=jnp.bool),
+                ),
+                axis=0,
+            ),
         )
 
     def get_templates(self) -> Features:
@@ -355,9 +360,12 @@ class DataSet:
 
         """
         data_dir = data_dir or _DEFALUT_DATA_DIR
+        labels = self.labels.tocoo()
         with open(os.path.join(data_dir, name), "wb") as f:
             np.save(f, self.features)
-            np.save(f, self.labels)
+            np.save(f, labels.row)
+            np.save(f, labels.col)
+            np.save(f, np.asarray(labels.shape))
             np.save(f, self.sample_names)
             np.save(f, self.label_names)
 
@@ -383,11 +391,16 @@ def load_dataset(name: str, data_dir: str | None = None, **kwds) -> DataSet:
     The reconstructed dataset.
 
     """
+
+    def to_csc(rows, cols, shape) -> sp.sparse.csc_array:
+        data = np.ones((rows.shape[0],), dtype=np.bool)
+        return sp.sparse.coo_array((data, (rows, cols)), shape).tocsc()
+
     data_dir = data_dir or _DEFALUT_DATA_DIR
     with open(os.path.join(data_dir, name), "rb") as f:
         return DataSet(
             np.load(f),
-            np.load(f),
+            to_csc(np.load(f), np.load(f), np.load(f)),
             np.load(f, allow_pickle=True),
             np.load(f, allow_pickle=True),
             **kwds,

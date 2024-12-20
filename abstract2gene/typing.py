@@ -6,6 +6,7 @@ import jax
 import numpy as np
 
 Features = jax.Array
+# NOTE: Label type refers to a single column vector of labels.
 Labels = jax.Array
 Batch = tuple[Features, Features, Labels]
 PyTree = dict[str, Any]
