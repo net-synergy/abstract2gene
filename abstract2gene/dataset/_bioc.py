@@ -5,7 +5,6 @@ __all__ = ["bioc2dataset"]
 import os
 import tarfile
 import xml.etree.ElementTree as ET
-from collections import defaultdict
 from typing import Any, Callable, Iterable
 
 import jax
@@ -105,14 +104,12 @@ class _BiocParser:
         self.tokenizer = AutoTokenizer.from_pretrained("allenai/specter")
         self.model = jax.jit(FlaxAutoModel.from_pretrained("allenai/specter"))
 
-        self._pmid2features: dict[str, jnp.ndarray] = {}
-        self._pmid2ann: dict[str, list[str]] = {}
-        self._pub2idx: dict[str, int] = {}
+        self._features: list[jnp.ndarray] = []
+        self._pmid_names: list[str] = []
+        self._edge_list: list[list[str]] = []
         self._ann2idx: dict[str, int] = {}
-        self._ann_occurrences: dict[str, int] = defaultdict(int)
         self._ann_count = 0
-        self._pub_count = 0
-        self._idx2symbol: dict[int, str] = {}
+        self._ann_symbols: list[str] = ["" for _ in range(1000)]
 
     def _get_archives(
         self, file_numbers: Iterable[int], n_files: int
@@ -138,57 +135,47 @@ class _BiocParser:
                 total = len(self.iterfiles(tar))
                 with tqdm(total=total, desc=desc) as pbar:
                     for file in self.iterfiles(tar):
-                        fd = tar.extractfile(file)
-                        pmids, abstracts = self._parse_file(fd)
+                        with tar.extractfile(file) as fd:
+                            abstracts = self._parse_file(fd)
 
-                        if len(pmids) == 0:
-                            # If an entire file is malformed, may end up with
-                            # no data to pass to embed.
-                            continue
-
-                        self._embed(pmids, abstracts, pbar)
-
-                        fd.close()
+                        self._features.extend(self._embed(abstracts))
                         pbar.update()
 
-    def _parse_file(self, fd) -> tuple[list[str], list[str]]:
+    def _parse_file(self, fd) -> list[str]:
         tree = ET.parse(fd)
-        pmids: list[str] = []
         abstracts: list[str] = []
         for doc in tree.findall("document"):
             try:
                 pmid, abstract, annotations = self._parse_doc(doc)
             except (ValueError, ET.ParseError):
                 continue
-            self._pub2idx[pmid] = self._pub_count
-            self._pub_count += 1
-            self._pmid2ann[pmid] = [ann_id for ann_id, _ in annotations]
-            for ann_id, _ in annotations:
-                self._ann_occurrences[ann_id] += 1
-            pmids.append(pmid)
+
+            self._edge_list.append([ann_id for ann_id, _ in annotations])
+            self._pmid_names.append(pmid)
             abstracts.append(abstract)
 
             for ann_id, symbol in annotations:
-                if (
-                    (ann_id is not None)
-                    and (symbol is not None)
-                    and (ann_id not in self._ann2idx)
-                ):
-                    self._ann2idx[ann_id] = self._ann_count
-                    self._idx2symbol[self._ann_count] = symbol
-                    self._ann_count += 1
-                elif (
-                    (ann_id is not None)
-                    and (symbol is not None)
-                    and (
-                        len(symbol)
-                        < len(self._idx2symbol[self._ann2idx[ann_id]])
-                    )
-                ):
-                    # Prefer abbreviations to full name.
-                    self._idx2symbol[self._ann2idx[ann_id]] = symbol
+                if ann_id is None:
+                    continue
 
-        return (pmids, abstracts)
+                if ann_id not in self._ann2idx:
+                    self._ann2idx[ann_id] = self._ann_count
+                    self._ann_count += 1
+
+                if symbol is not None:
+                    idx = self._ann2idx[ann_id]
+                    if idx >= len(self._ann_symbols):
+                        self._ann_symbols += [
+                            "" for _ in range(self._ann_count // 2)
+                        ]
+
+                    current_symbol = self._ann_symbols[idx]
+                    if (not current_symbol) or (
+                        len(current_symbol) > len(symbol)
+                    ):
+                        self._ann_symbols[idx] = symbol
+
+        return abstracts
 
     def _parse_doc(
         self, doc: ET.Element
@@ -296,12 +283,11 @@ class _BiocParser:
             if self._is_type(ann, self.ann_type)
         ]
 
-    def _embed(
-        self, pmids: list[str], abstracts: list[str], pbar: tqdm
-    ) -> None:
+    def _embed(self, abstracts: list[str]) -> list[jnp.ndarray]:
         start_idx = 0
         end_idx = min(self.batch_size, len(abstracts))
 
+        features: list[jnp.ndarray] = []
         while start_idx < end_idx:
             inputs = self.tokenizer(
                 abstracts[start_idx:end_idx],
@@ -311,38 +297,35 @@ class _BiocParser:
                 max_length=self.max_tokens,
             )
             outputs = self.model(**inputs)
-            for pmid, embedding in zip(
-                pmids[start_idx:end_idx], outputs.last_hidden_state[:, 0, :]
-            ):
-                self._pmid2features[pmid] = embedding.reshape((1, -1))
+            features.append(outputs.last_hidden_state[:, 0, :])
 
             start_idx = end_idx
             end_idx = min(end_idx + self.batch_size, len(abstracts))
 
+        return features
+
     def to_arrays(
         self,
     ) -> tuple[jax.Array, np.ndarray[Any, np.dtype[np.bool]]]:
-        n_edges = sum((len(anns) for anns in self._pmid2ann.values()))
-        label_data = np.ones((n_edges,), dtype=np.bool)
-        label_rows = np.zeros((n_edges,))
-        label_cols = np.zeros((n_edges,))
-        label_shape = (len(self._pub2idx), len(self._ann2idx))
+        n_edges = sum((len(anns) for anns in self._edge_list))
+        data = np.ones((n_edges,), dtype=np.bool)
+        rows = np.zeros((n_edges,))
+        cols = np.zeros((n_edges,))
+        shape = (len(self._pmid_names), self._ann_count)
         count = 0
-        for pmid, anns in self._pmid2ann.items():
+        for i, anns in enumerate(self._edge_list):
             for ann in anns:
-                label_rows[count] = self._pub2idx[pmid]
-                label_cols[count] = self._ann2idx[ann]
+                rows[count] = i
+                cols[count] = self._ann2idx[ann]
                 count += 1
 
         return (
-            jnp.concat(tuple(self._pmid2features.values()), axis=0),
-            sp.sparse.coo_array(
-                (label_data, (label_rows, label_cols)), label_shape
-            ).tocsc(),
+            jnp.concat(self._features),
+            sp.sparse.coo_array((data, (rows, cols)), shape).tocsc(),
         )
 
     def sample_names(self) -> np.ndarray[Any, np.dtype[np.str_]]:
-        return np.asarray(list(self._pub2idx.keys()))
+        return np.asarray(self._pmid_names)
 
     def annotation_names(self) -> np.ndarray[Any, np.dtype[np.str_]]:
-        return np.asarray(list(self._idx2symbol.values()))
+        return np.asarray(self._ann_symbols)
