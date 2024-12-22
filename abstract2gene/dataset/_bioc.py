@@ -3,6 +3,7 @@
 __all__ = ["bioc2dataset"]
 
 import os
+import re
 import tarfile
 import xml.etree.ElementTree as ET
 from typing import Any, Callable, Iterable
@@ -120,10 +121,16 @@ class _BiocParser:
         archives = downloader.download()
 
         def iterfiles(tar: tarfile.TarFile) -> Iterable[str]:
+            # TMP: Drop files with 6 digits in the name since these (seem to)
+            # have 1000 docs per file instead of 100. It's throwing off tqdm's
+            # time predictions.
+            names = [
+                n for n in tar.getnames() if len(re.findall(r"\d{6}", n)) == 0
+            ]
             if n_files < 0:
-                return tar.getnames()
+                return names
 
-            return tar.getnames()[:n_files]
+            return names[:n_files]
 
         return (archives, iterfiles)
 

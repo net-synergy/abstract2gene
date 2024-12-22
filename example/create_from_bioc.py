@@ -16,5 +16,5 @@ os.environ.update(
     }
 )
 
-dataset = bioc2dataset([0], min_occurrences=50, embed_bs=100)
+dataset = bioc2dataset([0], embed_bs=100)
 dataset.save("bioc")
