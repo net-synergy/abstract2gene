@@ -132,11 +132,17 @@ class FtpDownloader:
 
         return self._local(file)
 
-    def download(self) -> list[str]:
-        """Download the requested files."""
+    def download(self, files: Iterable[str] | None = None) -> list[str]:
+        """Download the requested files.
+
+        By default downloads the files passed to the downloader at initiation.
+        If files are passed as argument, those files will be downloaded from
+        the ftp server instead.
+        """
+        files = files or self.files
         if not self._check_remote:
-            if all((os.path.exists(self._local(f)) for f in self.files)):
-                return [self._local(f) for f in self.files]
+            if all((os.path.exists(self._local(f)) for f in files)):
+                return [self._local(f) for f in files]
 
             raise FileExistsError(
                 """At least one requested file has not been downloaded.
@@ -150,8 +156,8 @@ class FtpDownloader:
         ls = list(self.ftp.mlsd(facts=["modify"]))
 
         print("Starting downloads:")
-        files = [self._download_file(file, ls) for file in self.files]
+        local_paths = [self._download_file(file, ls) for file in files]
 
         self.disconnect()
 
-        return files
+        return local_paths

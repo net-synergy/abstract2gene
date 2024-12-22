@@ -2,6 +2,8 @@
 
 __all__ = ["download", "default_cache_dir", "default_data_dir"]
 
+from typing import Iterable
+
 from abstract2gene.storage import default_cache_dir, default_data_dir
 
 from .bioc import BiocDownloader
@@ -10,7 +12,10 @@ from .pubtator import PubtatorDownloader
 
 
 def download(
-    content: str, cache_dir: str | None = None, check_remote: bool = False
+    content: str,
+    files: Iterable[str] | None = None,
+    cache_dir: str | None = None,
+    check_remote: bool = False,
 ) -> list[str]:
     """Download content from online FTP server.
 
@@ -22,6 +27,9 @@ def download(
     ----------
     content : str { "pubmed", "pubtator", "bioc" }
         The name of the content to download.
+    files : list[str], optional
+        If files is given, download these files from the FTP server instead of
+        the default file list.
     cache_dir : str, optional
         Where to download and check for content. Uses `default_cache_dir` by
         default.
@@ -51,4 +59,4 @@ def download(
         cache_dir=cache_dir, check_remote=check_remote
     )
 
-    return downloader.download()
+    return downloader.download(files=files)
