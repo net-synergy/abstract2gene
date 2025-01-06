@@ -246,7 +246,7 @@ def test(
 
     def _test_label(model, batch, symbol, pmids, save_results):
         labels = batch[-1]
-        y_hat = model.predict(*batch[:-1])
+        y_hat = model._predict(*batch[:-1])
         sim_within = y_hat[labels]
         sim_between = y_hat[np.logical_not(labels)]
 
