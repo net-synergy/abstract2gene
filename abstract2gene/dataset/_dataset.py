@@ -142,7 +142,7 @@ class DataSet:
             "validate": mask == 3,
         }
 
-        self._unlabeled_mask = np.logical_not(label_mask)
+        self._unlabeled_mask = self.labels.sum(axis=1) == 0
 
     @property
     def batch_size(self) -> int:
