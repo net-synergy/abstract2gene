@@ -107,10 +107,9 @@ class _BiocParser:
 
         self._features: list[jnp.ndarray] = []
         self._pmid_names: list[str] = []
-        self._edge_list: list[list[str]] = []
-        self._ann2idx: dict[str, int] = {}
-        self._ann_count = 0
-        self._ann_symbols: list[str] = ["" for _ in range(1000)]
+        self._edge_list: list[list[int]] = []
+        self._ann_ids: list[int] = []
+        self._ann_symbols: list[str] = []
 
     def _get_archives(
         self, file_numbers: Iterable[int], n_files: int
@@ -157,30 +156,28 @@ class _BiocParser:
             except (ValueError, ET.ParseError):
                 continue
 
-            self._edge_list.append([ann_id for ann_id, _ in annotations])
+            self._edge_list.append(
+                [
+                    int(ann_id)
+                    for ann_id, _ in annotations
+                    if ann_id is not None
+                ]
+            )
             self._pmid_names.append(pmid)
             abstracts.append(abstract)
 
             for ann_id, symbol in annotations:
-                if ann_id is None:
-                    continue
-
-                if ann_id not in self._ann2idx:
-                    self._ann2idx[ann_id] = self._ann_count
-                    self._ann_count += 1
-
-                if symbol is not None:
-                    idx = self._ann2idx[ann_id]
-                    if idx >= len(self._ann_symbols):
-                        self._ann_symbols += [
-                            "" for _ in range(self._ann_count // 2)
-                        ]
-
-                    current_symbol = self._ann_symbols[idx]
-                    if (not current_symbol) or (
-                        len(current_symbol) > len(symbol)
-                    ):
-                        self._ann_symbols[idx] = symbol
+                numeric_id = int(ann_id)
+                idx = np.searchsorted(self._ann_ids, numeric_id)
+                if (
+                    idx >= len(self._ann_ids)
+                    or numeric_id != self._ann_ids[idx]
+                ):
+                    self._ann_ids.insert(idx, numeric_id)
+                    self._ann_symbols.insert(idx, symbol)
+                elif len(symbol) < len(self._ann_symbols[idx]):
+                    # Prefer smaller symbols
+                    self._ann_symbols[idx] = symbol
 
         return abstracts
 
@@ -318,12 +315,12 @@ class _BiocParser:
         data = np.ones((n_edges,), dtype=np.bool)
         rows = np.zeros((n_edges,))
         cols = np.zeros((n_edges,))
-        shape = (len(self._pmid_names), self._ann_count)
+        shape = (len(self._pmid_names), max(self._ann_ids) + 1)
         count = 0
         for i, anns in enumerate(self._edge_list):
             for ann in anns:
                 rows[count] = i
-                cols[count] = self._ann2idx[ann]
+                cols[count] = ann
                 count += 1
 
         return (
@@ -334,5 +331,7 @@ class _BiocParser:
     def sample_names(self) -> np.ndarray[Any, np.dtype[np.str_]]:
         return np.asarray(self._pmid_names)
 
-    def annotation_names(self) -> np.ndarray[Any, np.dtype[np.str_]]:
-        return np.asarray(self._ann_symbols)
+    def annotation_names(self) -> sp.sparse.csr_array:
+        return sp.sparse.csr_array(
+            (self._ann_symbols, self._ann_ids, [0, len(self._ann_ids)])
+        )

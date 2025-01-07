@@ -89,8 +89,7 @@ class Model:
         These are used for prediction---outside of training. During training,
         templates are created with batches by the dataset.
         """
-        self.templates = dataset.get_templates()
-        self.label_names = dataset.label_names
+        self.templates, self.label_names = dataset.get_templates()
 
     def predict(self, x: Features) -> jax.Array:
         """Calculate similarity of samples `x` to templates `template`.

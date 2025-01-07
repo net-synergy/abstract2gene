@@ -62,7 +62,7 @@ class DataSet:
         features: InFeatures,
         labels: InLabels,
         sample_names: Names,
-        label_names: Names,
+        label_names: sp.sparse.csr_array,
         train_test_val_split: tuple[float, float, float] = (0.7, 0.2, 0.1),
         batch_size: int = 64,
         template_size: int = 32,
@@ -74,12 +74,15 @@ class DataSet:
         ----------
         features : ndarray[Any, dtype[double]]
             Should be in the form n_samples x n_features
-        labels : ndarray[Any, dtype[bool]]
-            Should be in the form n_samples x n_labels
+        labels : 2d sparse array (csc form)
+            Should be in the form n_samples x n_labels. Column indices are
+            label IDs (i.e. Gene ID for genes). By using official IDs, datasets
+            can theoretically be merged together.
         sample_names : ndarray (dtype str_ or object)
             One dimensional array of feature names (such as PMIDs)
-        label_names : ndarray (dtype str_ or object)
-            One dimensional array of label names (such as gene symbols)
+        label_names : sparse array (csr form)
+            Effectively a row vector of names in sparse form. Columns indices
+            are same as in labels.
         train_test_val_split : tuple[float, float, float], Optional
             The proportion of all samples to be used for training, testing, and
             validation. Should add up to 1. Labels are split into sets.
@@ -250,8 +253,9 @@ class DataSet:
         """Generate batches of features to train on."""
         labels = self.labels[:, self._masks[task]]
         label_pool = self._rng.permutation(np.arange(labels.shape[1]))
+        label_names = self._index_labels(self._masks[task])
         for label_idx in label_pool:
-            self._label_name = self.label_names[self._masks[task]][label_idx]
+            self._label_name = label_names[label_idx]
             yield self._split_labels(
                 labels[:, [label_idx]].toarray().squeeze(), self.batch_size
             )
@@ -304,7 +308,19 @@ class DataSet:
             ),
         )
 
-    def get_templates(self) -> Features:
+    def _index_labels(
+        self, indices: np.ndarray[Any, np.dtype[np.bool_]]
+    ) -> np.ndarray[Any, np.dtype[np.str_]]:
+        """Sparse arrays with str data cannot be indexed directly.
+
+        Finds the label names associated with the labels used to make
+        templates. Since label names is a sparse matrix, the indices in
+        it's indices field are not sequential.
+        """
+        idx = np.isin(self.label_names.indices, np.where(indices))
+        return self.label_names.data[idx]
+
+    def get_templates(self) -> tuple[Features, Names]:
         """Return a matrix of templates created from dataset.
 
         Randomly pulls `self.template_size` samples for each label, averages
@@ -312,8 +328,10 @@ class DataSet:
         the corresponding names.
         """
         ts = self.template_size
+        frequent_labels = self.labels.sum(0) > ts
+        label_names = self._index_labels(frequent_labels)
         index = self._rng.permuted(
-            self.labels
+            self.labels[:, frequent_labels]
             * (np.arange(self.labels.shape[0]) + 1).reshape((-1, 1)),
             axis=0,
         )
@@ -322,12 +340,15 @@ class DataSet:
         )
 
         dtype = np.dtype((self.features.dtype, (ts, self.features.shape[1])))
-        return jnp.asarray(
-            np.fromiter(
-                (self.features[idx[:ts], :] for idx in col_indices),
-                count=self.labels.shape[1],
-                dtype=dtype,
-            ).mean(axis=1)
+        return (
+            jnp.asarray(
+                np.fromiter(
+                    (self.features[idx[:ts], :] for idx in col_indices),
+                    count=self.labels.shape[1],
+                    dtype=dtype,
+                ).mean(axis=1)
+            ),
+            label_names,
         )
 
     def save(self, name: str, data_dir: str | None = None) -> None:
@@ -336,20 +357,20 @@ class DataSet:
         Parameters
         ----------
         name : str
-            The name of the model (without or without ".npy" file extension).
+            The name of the model (the ".npy" extension is not required).
         data_dir : str, optional
             Where to store the dataset if not using the default data directory.
 
         """
         data_dir = data_dir or _DEFALUT_DATA_DIR
-        labels = self.labels.tocoo()
         with open(os.path.join(data_dir, name), "wb") as f:
             np.save(f, self.features)
-            np.save(f, labels.row)
-            np.save(f, labels.col)
-            np.save(f, np.asarray(labels.shape))
+            np.save(f, self.labels.indices)
+            np.save(f, self.labels.indptr)
+            np.save(f, np.asarray(self.labels.shape))
             np.save(f, self.sample_names)
-            np.save(f, self.label_names)
+            np.save(f, self.label_names.data)
+            np.save(f, self.label_names.indices)
 
 
 def load_dataset(name: str, data_dir: str | None = None, **kwds) -> DataSet:
@@ -362,7 +383,7 @@ def load_dataset(name: str, data_dir: str | None = None, **kwds) -> DataSet:
     Parameters
     ----------
     name : str
-        The name of the model (with or without ".npy" extension).
+        The name of the model.
     data_dir : str, optional
         Where to save the file if not using the default data directory.
     **kwds :
@@ -374,16 +395,19 @@ def load_dataset(name: str, data_dir: str | None = None, **kwds) -> DataSet:
 
     """
 
-    def to_csc(rows, cols, shape) -> sp.sparse.csc_array:
-        data = np.ones((rows.shape[0],), dtype=np.bool)
-        return sp.sparse.coo_array((data, (rows, cols)), shape).tocsc()
+    def to_sparse_labels(indices, indptr, shape) -> sp.sparse.csc_array:
+        data = np.ones((indices.shape[0],), dtype=np.bool)
+        return sp.sparse.csc_array((data, indices, indptr), shape)
+
+    def to_sparse_label_names(names, indices) -> sp.sparse.csr_array:
+        return sp.sparse.csr_array((names, indices, [0, indices.shape[0]]))
 
     data_dir = data_dir or _DEFALUT_DATA_DIR
     with open(os.path.join(data_dir, name), "rb") as f:
         return DataSet(
             np.load(f),
-            to_csc(np.load(f), np.load(f), np.load(f)),
+            to_sparse_labels(np.load(f), np.load(f), np.load(f)),
             np.load(f, allow_pickle=True),
-            np.load(f, allow_pickle=True),
+            to_sparse_label_names(np.load(f, allow_pickle=True), np.load(f)),
             **kwds,
         )
