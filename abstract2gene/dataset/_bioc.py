@@ -315,12 +315,17 @@ class _BiocParser:
         data = np.ones((n_edges,), dtype=np.bool)
         rows = np.zeros((n_edges,))
         cols = np.zeros((n_edges,))
-        shape = (len(self._pmid_names), max(self._ann_ids) + 1)
+        shape = (len(self._pmid_names), len(self._ann_ids))
         count = 0
         for i, anns in enumerate(self._edge_list):
             for ann in anns:
                 rows[count] = i
-                cols[count] = ann
+                # Convert original IDs to position. This drops information but
+                # original IDs may have large gaps between them making the
+                # number of columns huge. This doesn't directly matter for
+                # sparse arrays but it makes masks significantly larger than
+                # needed.
+                cols[count] = np.searchsorted(self._ann_ids, ann)
                 count += 1
 
         return (
@@ -331,7 +336,5 @@ class _BiocParser:
     def sample_names(self) -> np.ndarray[Any, np.dtype[np.str_]]:
         return np.asarray(self._pmid_names)
 
-    def annotation_names(self) -> sp.sparse.csr_array:
-        return sp.sparse.csr_array(
-            (self._ann_symbols, self._ann_ids, [0, len(self._ann_ids)])
-        )
+    def annotation_names(self) -> np.ndarray[Any, np.dtype[np.str_]]:
+        return np.asarray(self._ann_symbols)
