@@ -2,6 +2,7 @@
 
 __all__ = ["bioc2dataset"]
 
+import contextlib
 import os
 import re
 import tarfile
@@ -156,24 +157,14 @@ class _BiocParser:
             except (ValueError, ET.ParseError):
                 continue
 
-            self._edge_list.append(
-                [
-                    int(ann_id)
-                    for ann_id, _ in annotations
-                    if ann_id is not None
-                ]
-            )
+            self._edge_list.append([ann_id for ann_id, _ in annotations])
             self._pmid_names.append(pmid)
             abstracts.append(abstract)
 
             for ann_id, symbol in annotations:
-                numeric_id = int(ann_id)
-                idx = np.searchsorted(self._ann_ids, numeric_id)
-                if (
-                    idx >= len(self._ann_ids)
-                    or numeric_id != self._ann_ids[idx]
-                ):
-                    self._ann_ids.insert(idx, numeric_id)
+                idx = np.searchsorted(self._ann_ids, ann_id)
+                if idx >= len(self._ann_ids) or ann_id != self._ann_ids[idx]:
+                    self._ann_ids.insert(idx, ann_id)
                     self._ann_symbols.insert(idx, symbol)
                 elif len(symbol) < len(self._ann_symbols[idx]):
                     # Prefer smaller symbols
@@ -183,7 +174,7 @@ class _BiocParser:
 
     def _parse_doc(
         self, doc: ET.Element
-    ) -> tuple[str, str, list[tuple[str, str]]]:
+    ) -> tuple[str, str, list[tuple[int, str]]]:
         id_field = doc.find("id")
 
         # I don't think this should ever happen so raising an error to make it
@@ -192,7 +183,6 @@ class _BiocParser:
             raise ValueError("Document missing ID field.")
 
         pmid = id_field.text
-
         if pmid is None:
             raise ValueError("Document missing ID field.")
 
@@ -241,12 +231,24 @@ class _BiocParser:
     def _get_identifier(
         self,
         annotation: ET.Element,
-    ) -> tuple[str | None, str | None]:
+    ) -> tuple[int | None, str | None]:
         for infon in annotation.iterfind("infon"):
             if infon.attrib["key"] == "identifier":
                 symbol = annotation.find("text")
+                ann_id: int | None = None
+                if infon is not None:
+                    # ValueError can occur when multiple IDs are given for a
+                    # single gene, i.e. int("112;3939"). I don't know why a
+                    # gene should have multiple IDs and it is a rare occurrence
+                    # so these cases are dropped instead of picking an ID at
+                    # random.
+                    with contextlib.suppress(ValueError):
+                        ann_id = (
+                            int(infon.text) if infon.text is not None else None
+                        )
+
                 return (
-                    infon.text,
+                    ann_id,
                     symbol.text if symbol is not None else None,
                 )
 
@@ -280,7 +282,7 @@ class _BiocParser:
 
     def _collect_annotations(
         self, passage: ET.Element
-    ) -> list[tuple[str | None, str | None]]:
+    ) -> list[tuple[int | None, str | None]]:
         return [
             self._get_identifier(ann)
             for ann in passage.iterfind("annotation")
