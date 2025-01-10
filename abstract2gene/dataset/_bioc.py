@@ -116,7 +116,7 @@ class _BiocParser:
         self, file_numbers: Iterable[int], n_files: int
     ) -> tuple[list[str], Callable[[tarfile.TarFile], Iterable[str]]]:
         """Find the local path to the BioC archives."""
-        downloader = BiocDownloader()
+        downloader = BiocDownloader(check_remote=False)
         downloader.file_numbers = file_numbers
         archives = downloader.download()
 
@@ -142,10 +142,12 @@ class _BiocParser:
                 total = len(self.iterfiles(tar))
                 with tqdm(total=total, desc=desc) as pbar:
                     for file in self.iterfiles(tar):
-                        with tar.extractfile(file) as fd:
-                            abstracts = self._parse_file(fd)
-
-                        self._features.extend(self._embed(abstracts))
+                        try:
+                            with tar.extractfile(file) as fd:
+                                abstracts = self._parse_file(fd)
+                            self._features.extend(self._embed(abstracts))
+                        except ET.ParseError as e:
+                            print(f"Failed to parse {file}:\n  {e.msg}")
                         pbar.update()
 
     def _parse_file(self, fd) -> list[str]:
@@ -154,7 +156,7 @@ class _BiocParser:
         for doc in tree.findall("document"):
             try:
                 pmid, abstract, annotations = self._parse_doc(doc)
-            except (ValueError, ET.ParseError):
+            except ValueError:
                 continue
 
             self._edge_list.append([ann_id for ann_id, _ in annotations])
@@ -313,6 +315,14 @@ class _BiocParser:
     def to_arrays(
         self,
     ) -> tuple[jax.Array, np.ndarray[Any, np.dtype[np.bool]]]:
+        if len(self._features) == 0:
+            raise ValueError(
+                """No features were successfully created.
+
+                This was likely caused by all provided bioc files having parse
+                errors.
+                """
+            )
         n_edges = sum((len(anns) for anns in self._edge_list))
         data = np.ones((n_edges,), dtype=np.bool)
         rows = np.zeros((n_edges,))
