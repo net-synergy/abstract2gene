@@ -10,9 +10,7 @@ packages = [{ include = "abstract2gene" }]
 [tool.poetry.dependencies]
 python = "^3.10,<3.13"
 pandas = "^2.0"
-nltk = "^3.7"
 pubnet = {version = "^0.9", source = "testpypi", allow-prereleases = true, extras = ["pyarrow", "lm"]}
-scikit-learn = "^1.5.2"
 jax = {version = "^0.4.35", extras = ["cuda12"]}
 flax = "^0.10.2"
 optax = "^0.2.4"
