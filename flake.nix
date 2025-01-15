@@ -46,42 +46,6 @@
           ];
       };
 
-      pubmedparser2 = (pkgs.python3Packages.buildPythonPackage rec {
-        pname = "pubmedparser2";
-        version = "2.1.2";
-        format = "wheel";
-
-        src = pkgs.fetchPypi rec {
-          inherit pname version format;
-          sha256 = "sha256-btFWrX5gfBg9RsLyWs8jyxU9jUjvCl/+BhwEFAi6y44=";
-          dist = python;
-          python = "cp312";
-          abi = "cp312";
-          platform = "manylinux_2_35_x86_64";
-        };
-      });
-
-      pubnet = (pkgs.python3Packages.buildPythonPackage rec {
-        pname = "pubnet";
-        version = "0.9.1";
-        format = "pyproject";
-
-        nativeBuildInputs = [ pkgs.python3Packages.poetry-core ];
-        propagatedBuildInputs = (with pkgs.python3Packages; [
-          appdirs
-          igraph
-          matplotlib
-          numpy
-          pandas
-          pubmedparser2
-          scipy
-        ]);
-        src = pkgs.fetchPypi {
-          inherit pname version;
-          sha256 = "sha256-wjPKH+qIC8Mf/rRFsffQ+R0QyY8Qs5z5fd6X2Mkzsaw=";
-        };
-      });
-
       synstore = (pkgs.python3Packages.buildPythonPackage rec {
         pname = "synstore";
         version = "devel";
@@ -140,7 +104,6 @@
           pyarrow
 
           synstore
-          pubnet
         ]));
 
       REnv = (pkgs.rWrapper.override {
