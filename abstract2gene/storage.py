@@ -1,4 +1,6 @@
 __all__ = [
+    "set_cache_dir",
+    "set_data_dir",
     "default_cache_dir",
     "default_data_dir",
     "list_cache",
@@ -14,6 +16,8 @@ from abstract2gene import __name__ as pkg_name
 
 synstore.set_package_name(pkg_name)
 
+set_cache_dir = synstore.set_cache_dir
+set_data_dir = synstore.set_data_dir
 default_cache_dir = synstore.default_cache_dir
 default_data_dir = synstore.default_data_dir
 list_cache = synstore.list_cache

@@ -3,9 +3,12 @@ import os
 import multiprocess
 
 from abstract2gene.dataset import bioc2dataset
-from abstract2gene.storage import default_data_dir
+from abstract2gene.storage import default_data_dir, set_cache_dir, set_data_dir
 
 multiprocess.set_start_method("spawn")
+
+set_cache_dir("/disk4/david/cache")
+set_data_dir("/disk4/david/share")
 
 os.environ["XLA_FLAGS"] = (
     "--xla_gpu_enable_triton_softmax_fusion=true "

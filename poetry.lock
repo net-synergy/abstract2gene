@@ -3062,15 +3062,15 @@ dev = ["hypothesis (>=6.70.0)", "pytest (>=7.1.0)"]
 
 [[package]]
 name = "synstore"
-version = "0.1.2"
+version = "0.1.3a0"
 description = "Consistent storage for net-synergy projects."
 optional = false
 python-versions = ">=3.10,<4.0"
 groups = ["main"]
 markers = "python_version >= \"3.12\" or python_version <= \"3.11\""
 files = [
-    {file = "synstore-0.1.2-py3-none-any.whl", hash = "sha256:0100a5f008a84202f5503ba70eb6ed0679b52e4b67f4047ec2d3340af1a8e2fc"},
-    {file = "synstore-0.1.2.tar.gz", hash = "sha256:0fd6a5c314b3e6b9416836393670103ab40183b0095bb9b83fff70124126bec1"},
+    {file = "synstore-0.1.3a0-py3-none-any.whl", hash = "sha256:03cd22019108e370b8ffd96dec9e6bdbe386b5f98cac4c3ded81556cdbdc31ba"},
+    {file = "synstore-0.1.3a0.tar.gz", hash = "sha256:86df34941dd235e7f52b33400ca75df3deb420439728bb97ec03fd24fb124287"},
 ]
 
 [package.dependencies]
