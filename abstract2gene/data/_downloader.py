@@ -4,6 +4,7 @@ __all__ = ["FtpDownloader"]
 
 import datetime
 import os
+import pathlib
 from ftplib import FTP
 from typing import Iterable
 
@@ -81,6 +82,14 @@ class FtpDownloader:
         """Location where the local file should be store."""
         return os.path.join(self.cache_dir, file)
 
+    def _is_recent(self, file: str):
+        local_modtime = datetime.datetime.fromtimestamp(
+            os.stat(self._local(file)).st_mtime
+        )
+        last_week = datetime.datetime.today() - datetime.timedelta(days=7)
+
+        return local_modtime > last_week
+
     def _download_file(self, file: str, ls: list[_FileInfo]) -> str:
         """Download a single file from the server."""
 
@@ -111,6 +120,9 @@ class FtpDownloader:
             if is_old(file):
                 os.unlink(self._local(file))
             else:
+                # Won't check again for another week. Keeps calls to server
+                # down.
+                pathlib.Path(self._local(file)).touch()
                 print(f"Most recent file for {file} already downloaded.")
                 return self._local(file)
 
@@ -149,6 +161,11 @@ class FtpDownloader:
 
                 Rerun with `check_remote` set to True to cache files."""
             )
+
+        if all((os.path.exists(self._local(f)) for f in files)) and all(
+            (self._is_recent(f) for f in files)
+        ):
+            return [self._local(f) for f in files]
 
         if self.ftp is None:
             self.ftp = self.connect()
