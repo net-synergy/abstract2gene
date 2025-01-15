@@ -2,32 +2,30 @@
 
 from __future__ import annotations
 
-__all__ = ["DataSet", "load_dataset", "list_datasets", "delete_dataset"]
+__all__ = [
+    "DataLoader",
+    "from_huggingface",
+    "load_dataset",
+]
 
 import os
 from typing import Any, Iterable, TypeAlias
 
+import datasets
 import jax
 import jax.numpy as jnp
 import numpy as np
 import scipy as sp
 
-import abstract2gene.storage as storage
-from abstract2gene.storage import _storage_factory, default_data_dir
+from abstract2gene.storage import default_data_dir
 
 from ..typing import Batch, Features, Labels, Names
 
 InFeatures: TypeAlias = np.ndarray[Any, np.dtype[np.double]] | jax.Array
 InLabels: TypeAlias = sp.sparse.csc_array
 
-_NAME = "dataset"
-_DEFALUT_DATA_DIR = default_data_dir(_NAME)
 
-list_datasets = _storage_factory(storage.list_data, _NAME)
-delete_dataset = _storage_factory(storage.delete_from_data, _NAME)
-
-
-class DataSet:
+class DataLoader:
     """Collects features and labels.
 
     Data is split into training, testing, and validation sets and batches
@@ -68,7 +66,7 @@ class DataSet:
         template_size: int = 32,
         seed: int = 0,
     ):
-        """Construct a DataSet.
+        """Construct a DataLoader.
 
         Parameters
         ----------
@@ -97,7 +95,7 @@ class DataSet:
         self.label_names = label_names
 
         # Set hidden properties to prevent repeatedly triggering reshuffle
-        # before dataset fully initialized.
+        # before dataloader fully initialized.
         self._batch_size = batch_size
         self._template_size = template_size
         self._split = train_test_val_split
@@ -334,59 +332,105 @@ class DataSet:
             self.label_names[frequent_labels],
         )
 
-    def save(self, name: str, data_dir: str | None = None) -> None:
-        """Save the dataset to disk.
 
-        Parameters
-        ----------
-        name : str
-            The name of the model (the ".npy" extension is not required).
-        data_dir : str, optional
-            Where to store the dataset if not using the default data directory.
-
-        """
-        data_dir = data_dir or _DEFALUT_DATA_DIR
-        with open(os.path.join(data_dir, name), "wb") as f:
-            np.save(f, self.features)
-            np.save(f, self.labels.indices)
-            np.save(f, self.labels.indptr)
-            np.save(f, np.asarray(self.labels.shape))
-            np.save(f, self.sample_names)
-            np.save(f, self.label_names)
-
-
-def load_dataset(name: str, data_dir: str | None = None, **kwds) -> DataSet:
-    """Load a dataset from disk.
+def from_huggingface(
+    dataset: datasets.Dataset,
+    features: str = "embedding",
+    sample_id="pmid",
+    labels="gene2pubtator",
+    **kwds,
+) -> DataLoader:
+    """Construct a DataLoader from a datasets.Dataset.
 
     Note only the actual data (features, labels, and names) are saved. Other
-    keyword must be set again (such as batch_size, template_size, splits, and
-    random seed).
+    DataLoader parameters must be set again (such as batch_size, template_size,
+    splits, and random seed) using the kwds argument.
+
+    Parameters
+    ----------
+    dataset : dataset.DataSet
+        The dataset to convert.
+    features : str, default "embedding"
+        The name of the dataset feature to use as features.
+    sample_id : str, default "pmid"
+        The name of the dataset feature to use as IDs for the samples.
+    labels : str, default "gene2pubtator"
+        The name of the dataset feature to use as labels. This should have the
+        dataset.Feature type dataset.ClassLabel. This will be used for both
+        label values and their symbols. In addition to "gene2pubtator",
+        "gene2pubmed" is a useful option.
+    **kwds :
+        All other keywords are passed to the DataLoader constructor.
+
+    Return
+    ------
+    dataloader : DataLoader
+        The new DataLoader.
+
+    """
+
+    def to_sparse_labels(
+        dataset: datasets.Dataset, labels: str
+    ) -> sp.sparse.csc_array:
+        label_list = dataset[labels]
+        shape = (len(label_list), len(dataset.features[labels].feature.names))
+        coords = np.fromiter(
+            (
+                (i, lab_id)
+                for i, ids in enumerate(label_list)
+                for lab_id in ids
+            ),
+            dtype=(np.dtype(np.int64), 2),
+        )
+        data = np.ones((coords.shape[0],), dtype=np.bool)
+        return sp.sparse.coo_array((data, coords.T), shape).tocsc()
+
+    return DataLoader(
+        jnp.asarray(dataset[features]),
+        to_sparse_labels(dataset, labels),
+        dataset[sample_id],
+        dataset.features[labels].feature.names,
+        **kwds,
+    )
+
+
+# TODO: Once the embeddings dataset is upload to huggingface, switch from
+# datasets.load_from_disk to datasets.load_dataset and let hf handle all
+# caching,
+def load_dataset(
+    name: str,
+    data_dir: str | None = None,
+    labels: str = "gene2pubtator",
+    **kwds,
+):
+    """Load a dataset.Dataset and convert it to a DataLoader.
+
+    Wrapper around `dataset.load_dataset` and `from_huggingface`. For more
+    control (such as filtering the dataset before sending to the DataLoader),
+    use `dataset.load_dataset` and preprocess the dataset, then call
+    `abstract2gene.dataset.from_huggingface`. This also does not expose all
+    options availble to `from_huggingface`, for more flexibility call directly.
 
     Parameters
     ----------
     name : str
-        The name of the model.
-    data_dir : str, optional
-        Where to save the file if not using the default data directory.
+        Name of the data set to read.
+    data_dir : Optional str
+        Where to search for the dataset. Defaults to
+        `abstract2gene.storage.default_data_dir` with "datasets" subdir
+        appended to it.
+    labels : str, default "gene2pubtator"
+        The name of the dataset feature to use for labels. Feature must have
+        type dataset.ClassLabel.
     **kwds :
-        All other keywords are passed to the dataset constructor.
+        Keyword arguments to be forwarded to the DataLoader constructor.
 
-    Return
-    ------
-    The reconstructed dataset.
+    Returns
+    -------
+    dataset : DataLoader
 
     """
-
-    def to_sparse_labels(indices, indptr, shape) -> sp.sparse.csc_array:
-        data = np.ones((indices.shape[0],), dtype=np.bool)
-        return sp.sparse.csc_array((data, indices, indptr), shape)
-
-    data_dir = data_dir or _DEFALUT_DATA_DIR
-    with open(os.path.join(data_dir, name), "rb") as f:
-        return DataSet(
-            np.load(f),
-            to_sparse_labels(np.load(f), np.load(f), np.load(f)),
-            np.load(f, allow_pickle=True),
-            np.load(f, allow_pickle=True),
-            **kwds,
-        )
+    path = os.path.join(data_dir or default_data_dir("datasets"), name)
+    return from_huggingface(
+        datasets.load_from_disk(path), labels=labels, **kwds
+    )

@@ -6,7 +6,7 @@ import numpy as np
 import scipy as sp
 from pubnet import PubNet
 
-from ._dataset import DataSet
+from ._dataloader import DataLoader
 
 
 def net2dataset(
@@ -17,7 +17,7 @@ def net2dataset(
     feature_name: str = "PMID",
     remove_baseline: bool = False,
     **kwds,
-) -> DataSet:
+) -> DataLoader:
     """Return the network as a matrix of features and a matrix of labels.
 
     Features are normalized by publication so each publication's features has
@@ -31,7 +31,7 @@ def net2dataset(
 
     If `remove_baseline` subtract the average of each feature.
 
-    Any other keyword arguments will be based on to the DataSet constructor.
+    Any other keyword arguments will be based on to the DataLoader constructor.
     """
     net.repack()
 
@@ -55,7 +55,7 @@ def net2dataset(
         (embeddings.shape[0], label_names.shape[0]),
     ).tocsc()
 
-    return DataSet(
+    return DataLoader(
         embeddings,
         _labels,
         sample_names,

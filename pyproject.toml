@@ -1,7 +1,7 @@
 [tool.poetry]
 name = "abstract2gene"
 version = "0.1.0"
-description = "Word distributions related to gene symbols"
+description = "Classify abstracts with gene annotations"
 license = "MIT"
 repository = "https://github.com/net-synergy/abstract2gene"
 authors = ["David Connell <davidconnell12@gmail.com>"]
@@ -10,15 +10,16 @@ packages = [{ include = "abstract2gene" }]
 [tool.poetry.dependencies]
 python = "^3.10,<3.13"
 pandas = "^2.0"
-pubnet = {version = "^0.9", source = "testpypi", allow-prereleases = true, extras = ["pyarrow", "lm"]}
-jax = {version = "^0.4.35", extras = ["cuda12"]}
-flax = "^0.10.2"
-optax = "^0.2.4"
 synstore = {version = "^0.1", source = "testpypi", allow-prereleases = true}
-numpy = "^2.2.0"
+numpy = "^2.0.0"
 tqdm = "^4.67.1"
 transformers = "^4.47.1"
 scipy = "^1.14.1"
+datasets = "^3.2.0"
+jax = {version = "^0.4.38", extras = ["cuda12"]}
+optax = "^0.2.4"
+flax = "^0.10.2"
+torch = "^2.5.1"
 
 [tool.poetry.group.dev.dependencies]
 ipython = "^8.16.1"

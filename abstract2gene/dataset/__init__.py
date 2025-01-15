@@ -1,12 +1,9 @@
 from ._bioc import bioc2dataset
-from ._dataset import DataSet, delete_dataset, list_datasets, load_dataset
-from ._pubnet import net2dataset
+from ._dataloader import DataLoader, from_huggingface, load_dataset
 
 __all__ = [
-    "DataSet",
-    "delete_dataset",
-    "list_datasets",
+    "DataLoader",
     "load_dataset",
-    "net2dataset",
+    "from_huggingface",
     "bioc2dataset",
 ]

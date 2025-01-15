@@ -1,6 +1,11 @@
 import os
 
+import multiprocess
+
 from abstract2gene.dataset import bioc2dataset
+from abstract2gene.storage import default_data_dir
+
+multiprocess.set_start_method("spawn")
 
 os.environ["XLA_FLAGS"] = (
     "--xla_gpu_enable_triton_softmax_fusion=true "
@@ -16,5 +21,12 @@ os.environ.update(
     }
 )
 
-dataset = bioc2dataset([0], embed_bs=100)
-dataset.save("bioc")
+dataset = bioc2dataset([0], batch_size=10)
+
+save_path = os.path.join(default_data_dir("dataset"), "bioc_tmp")
+if os.path.isdir(save_path):
+    for f in os.listdir():
+        os.unlink(f)
+    os.rmdir(save_path)
+
+dataset.save_to_disk(save_path, max_shard_size="1GB")

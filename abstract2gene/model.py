@@ -25,7 +25,7 @@ import pandas as pd
 from flax import nnx
 from jax import tree_util
 
-from .dataset import DataSet
+from .dataset import DataLoader
 from .typing import Batch, Features, Labels, Names, PyTree
 
 RESULT_TEMPLATE = "results/{name}_validation.tsv"
@@ -83,7 +83,7 @@ class Model:
         self._name = value
         self.result_file = RESULT_TEMPLATE.format(name=value)
 
-    def attach_templates(self, dataset: DataSet) -> None:
+    def attach_templates(self, dataset: DataLoader) -> None:
         """Add the templates for the model.
 
         These are used for prediction---outside of training. During training,
@@ -141,13 +141,13 @@ class Model:
             self.gradient(*batch),
         )
 
-    def init_weights(self, data: DataSet, learning_rate: float) -> None:
+    def init_weights(self, data: DataLoader, learning_rate: float) -> None:
         raise NotImplementedError
 
 
 def train(
     model: Model,
-    data: DataSet,
+    data: DataLoader,
     max_epochs: int = 1000,
     stop_delta: float = 1e-5,
     learning_rate: float = 0.002,
@@ -227,7 +227,7 @@ def train(
 
 def test(
     model: Model,
-    data: DataSet,
+    data: DataLoader,
     max_num_tests: int | None = None,
     save_results: bool = True,
 ):
@@ -355,7 +355,7 @@ class ModelSingleLayer(Model):
     def loss(self, samples, templates, labels):
         return _mse_loss(self.params, samples, templates, labels)
 
-    def init_weights(self, data: DataSet, learning_rate: float) -> None:
+    def init_weights(self, data: DataLoader, learning_rate: float) -> None:
         self._optimizer = optax.adam(learning_rate=learning_rate)
         self._key, key = jax.random.split(self._key)
         self.params = {
@@ -422,7 +422,7 @@ class ModelMultiLayer(Model, nnx.Module):
             optax.losses.l2_loss(self._predict(samples, templates), labels)
         )
 
-    def init_weights(self, data: DataSet, learning_rate: float) -> None:
+    def init_weights(self, data: DataLoader, learning_rate: float) -> None:
         self._optimizer = nnx.Optimizer(
             self, optax.adam(learning_rate=learning_rate)
         )

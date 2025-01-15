@@ -84,15 +84,21 @@
 
       synstore = (pkgs.python3Packages.buildPythonPackage rec {
         pname = "synstore";
-        version = "0.1.2";
+        version = "devel";
         format = "pyproject";
 
         nativeBuildInputs = [ pkgs.python3Packages.poetry-core ];
         buildInputs = [ pkgs.python3Packages.platformdirs ];
-        src = pkgs.fetchPypi {
-          inherit pname version;
-          sha256 = "sha256-8O+8a9VzCloxWJGMkoDHDnKy4aCP6srjDkHcPf45eM8=";
+        src = pkgs.fetchFromGitHub {
+          owner = "net-synergy";
+          repo = "synstore";
+          rev = "devel";
+          sha256 = "sha256-uOzkVvVb+dkmqnLEYUeUlfaBlJbNobdKITTViT/Ecvc=";
         };
+        # src = pkgs.fetchPypi {
+        #   inherit pname version;
+        #   sha256 = "sha256-8O+8a9VzCloxWJGMkoDHDnKy4aCP6srjDkHcPf45eM8=";
+        # };
       });
 
       # a2gEnv = pkgs.poetry2nix.mkPoetryEnv {
@@ -121,15 +127,17 @@
           pandas
           scikit-learn
 
+          pytorch
           jax
-          jaxlib
           flax
           optax
           numpy
           tqdm
           transformers
+          datasets
           peft
           scipy
+          pyarrow
 
           synstore
           pubnet

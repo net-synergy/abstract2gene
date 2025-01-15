@@ -7,28 +7,26 @@ import os
 import re
 import tarfile
 import xml.etree.ElementTree as ET
-from typing import Any, Callable, Iterable
+from typing import Any, Callable, Iterable, Sequence
 
-import jax
-import jax.numpy as jnp
+import datasets
 import numpy as np
-import scipy as sp
+import pandas as pd
+import torch
 from tqdm import tqdm
-from transformers import AutoTokenizer, FlaxAutoModel
+from transformers import AutoModel, AutoTokenizer
 
-from abstract2gene.data import BiocDownloader
-
-from ._dataset import DataSet
+from abstract2gene.data import BiocDownloader, PubmedDownloader
 
 
 def bioc2dataset(
     archives: Iterable[int],
     n_files: int = -1,
     ann_type="Gene",
-    embed_bs: int = 50,
+    batch_size: int = 32,
     max_tokens: int = 512,
-    **kwds,
-) -> DataSet:
+    cache_dir: str | None = None,
+) -> datasets.Dataset:
     """Create a dataset from Pubtator's BioC archive files.
 
     Pubtator's archive files contain abstracts plus annotations. Using these
@@ -56,7 +54,7 @@ def bioc2dataset(
         passages are used not those from titles are full text. Annotations for
         the selected annotation type are stripped from the abstracts before
         embedding.
-    embed_bs : int, default 50
+    batch_size : int, default 50
         Batch size used for embedding. Larger batch sizes may result in faster
         processing but can exhaust memory. 50 was chosen as default since it
         divides the number of publications in a file and the model is passed
@@ -68,26 +66,22 @@ def bioc2dataset(
         abstracts and padding smaller abstracts. This allows the model to run
         on multiple abstracts at once. Larger values take longer to process but
         smaller values risk dropping information.
-    **kwds : dict[str, Any]
-        Keyword arguments to be passed to the DataSet constructor.
+    cache_dir : Optional str
+        Where to cache and retrieve BioC archives locally. Defaults to
+        `abstract2gene.storage.default_cache_dir`. A different cache can also
+        be set globally using `abstract2gene.storage.set_cache_dir`.
 
     Returns
     -------
-    dataset : a2g.dataset.DataSet
+    dataset : datasets.Dataset
         A dataset containing the abstract embeddings for each publication and a
         list of labels.
 
     """
-    parser = _BiocParser(archives, n_files, ann_type, embed_bs, max_tokens)
-    parser.parse()
-    features, labels = parser.to_arrays()
-    return DataSet(
-        features,
-        labels,
-        parser.sample_names(),
-        parser.annotation_names(),
-        **kwds,
+    parser = _BiocParser(
+        archives, n_files, ann_type, batch_size, max_tokens, cache_dir
     )
+    return parser.parse()
 
 
 class _BiocParser:
@@ -98,85 +92,187 @@ class _BiocParser:
         ann_type: str,
         batch_size: int,
         max_tokens: int,
+        cache_dir: str | None,
     ):
+        self.cache_dir = cache_dir
         self.archives, self.iterfiles = self._get_archives(archives, n_files)
         self.ann_type = ann_type
         self.batch_size = batch_size
         self.max_tokens = max_tokens
-        self.tokenizer = AutoTokenizer.from_pretrained("allenai/specter")
-        self.model = jax.jit(FlaxAutoModel.from_pretrained("allenai/specter"))
 
-        self._features: list[jnp.ndarray] = []
-        self._pmid_names: list[str] = []
-        self._edge_list: list[list[int]] = []
+        model_id = "allenai/specter"
+        self.tokenizer = AutoTokenizer.from_pretrained(model_id)
+        self.mask_token = self.tokenizer.special_tokens_map["mask_token"]
+        self.model = AutoModel.from_pretrained(model_id).eval()
+
         self._ann_ids: list[int] = []
         self._ann_symbols: list[str] = []
 
     def _get_archives(
         self, file_numbers: Iterable[int], n_files: int
-    ) -> tuple[list[str], Callable[[tarfile.TarFile], Iterable[str]]]:
+    ) -> tuple[list[str], Callable[[tarfile.TarFile], Sequence[str]]]:
         """Find the local path to the BioC archives."""
-        downloader = BiocDownloader(check_remote=False)
+        downloader = BiocDownloader(cache_dir=self.cache_dir)
         downloader.file_numbers = file_numbers
         archives = downloader.download()
 
-        def iterfiles(tar: tarfile.TarFile) -> Iterable[str]:
-            # TMP: Drop files with 6 digits in the name since these (seem to)
-            # have 1000 docs per file instead of 100. It's throwing off tqdm's
-            # time predictions.
-            names = [
-                n for n in tar.getnames() if len(re.findall(r"\d{6}", n)) == 0
-            ]
+        def iterfiles(tar: tarfile.TarFile) -> Sequence[str]:
             if n_files < 0:
-                return names
+                return tar.getnames()
 
-            return names[:n_files]
+            return tar.getnames()[:n_files]
 
         return (archives, iterfiles)
 
+    def _read_pubmed_data(self):
+        # TODO: Assumes genes even if another annotation type is requested.
+        pubmed_downloader = PubmedDownloader()
+        pubmed_downloader.files = ["gene2pubmed.gz"]
+        return pd.read_table(
+            pubmed_downloader.download()[0],
+            header=0,
+            names=["TaxID", "GeneID", "PMID"],
+            usecols=["PMID", "GeneID"],
+            memory_map=True,
+        ).sort_values("PMID")
+
+    def _attach_pubmed_genes(
+        self, examples: dict[str, list[Any]]
+    ) -> dict[str, list[Any]]:
+        def get_genes(pmid):
+            table = self._pubmed_edges
+            start = np.searchsorted(table["PMID"], pmid)
+            end = start
+            while (end < table.shape[0]) and (table["PMID"].iloc[end] == pmid):
+                end += 1
+
+            return [table["GeneID"].iloc[idx] for idx in range(start, end)]
+
+        examples["gene2pubmed"] = [
+            get_genes(pmid) for pmid in examples["pmid"]
+        ]
+
+        return examples
+
     def parse(self):
         print(f"Starting embedding for {len(self.archives)} archives.")
-        for archive in self.archives:
+        pub_data = list(self._grab_publication_data())
+        dataset = datasets.Dataset.from_list(pub_data).map(
+            self._tokenize_and_embed,
+            batched=True,
+            batch_size=self.batch_size,
+            with_rank=True,
+            remove_columns="abstract",
+            num_proc=torch.cuda.device_count(),
+            desc="Embed Abstracts",
+        )
+
+        # If first batch of pubmed genes is all empty (unlikely with a large
+        # batch), datasets will detect a null feature type instead of using
+        # int. Explicitly pass it the correct type to prevent this.
+        features = dataset.features.copy()
+        features["gene2pubmed"] = features["gene2pubtator"]
+        self._pubmed_edges = self._read_pubmed_data()
+        dataset = dataset.map(
+            self._attach_pubmed_genes,
+            batched=True,
+            features=features,
+            desc="Attach pubmed genes",
+        )
+
+        def deduplicate(anns: list[str]) -> list[str]:
+            values, counts = np.unique_counts(anns)
+            duplicated = values[counts > 1]
+            counts = counts[counts > 1]
+
+            for i in range(len(anns)):
+                if anns[i] in duplicated:
+                    loc = np.isin(duplicated, anns[i])
+                    anns[i] += f"{counts[loc]}"
+                    counts[loc] -= 1
+
+            return anns
+
+        self._ann_symbols = deduplicate(self._ann_symbols)
+        features["gene2pubtator"] = datasets.Sequence(
+            datasets.ClassLabel(names=self._ann_symbols)
+        )
+        features["gene2pubmed"] = datasets.Sequence(
+            datasets.ClassLabel(names=self._ann_symbols)
+        )
+        features["embedding"].length = len(dataset["embedding"][0])
+
+        def repack_labels(
+            examples: dict[str, list[Any]],
+        ) -> dict[str, list[Any]]:
+            examples["gene2pubtator"] = [
+                np.searchsorted(self._ann_ids, ann)
+                for ann in (batch for batch in examples["gene2pubtator"])
+            ]
+            examples["gene2pubmed"] = [
+                np.searchsorted(self._ann_ids, ann)
+                for ann in (batch for batch in examples["gene2pubmed"])
+            ]
+            return examples
+
+        return dataset.map(
+            repack_labels,
+            batched=True,
+            features=features,
+            desc="Repack label IDs",
+        )
+
+    def _grab_publication_data(self) -> dict[str, Any]:
+        for i, archive in enumerate(self.archives):
             with tarfile.open(archive, "r") as tar:
                 desc = os.path.basename(archive)
                 total = len(self.iterfiles(tar))
-                with tqdm(total=total, desc=desc) as pbar:
+                with tqdm(total=total, desc=desc, position=i) as pbar:
                     for file in self.iterfiles(tar):
                         try:
-                            with tar.extractfile(file) as fd:
-                                abstracts = self._parse_file(fd)
-                            self._features.extend(self._embed(abstracts))
+                            with tar.extractfile(file) as fd:  # type: ignore[union-attr]
+                                for pub_data in self._parse_file(fd):
+                                    yield pub_data
                         except ET.ParseError as e:
                             print(f"Failed to parse {file}:\n  {e.msg}")
+
                         pbar.update()
 
-    def _parse_file(self, fd) -> list[str]:
+    def _parse_file(self, fd) -> Iterable[dict[str, Any]]:
         tree = ET.parse(fd)
-        abstracts: list[str] = []
-        for doc in tree.findall("document"):
+        for doc in tree.iterfind("document"):
             try:
-                pmid, abstract, annotations = self._parse_doc(doc)
+                pmid, abstract, year, annotations = self._parse_doc(doc)
+
+                for ann_id, symbol in annotations:
+                    idx = np.searchsorted(self._ann_ids, ann_id)
+                    if (
+                        idx >= len(self._ann_ids)
+                        or ann_id != self._ann_ids[idx]
+                    ):
+                        self._ann_ids.insert(idx, ann_id)
+                        self._ann_symbols.insert(idx, symbol or "")
+                    elif symbol and (
+                        (not self._ann_symbols[idx])
+                        or (len(symbol) < len(self._ann_symbols[idx]))
+                    ):
+                        # Prefer smaller symbols
+                        self._ann_symbols[idx] = symbol
+
+                yield {
+                    "pmid": pmid,
+                    "abstract": abstract,
+                    "year": year,
+                    "gene2pubtator": list(
+                        {ann_id for ann_id, _ in annotations}
+                    ),
+                }
             except ValueError:
                 continue
 
-            self._edge_list.append([ann_id for ann_id, _ in annotations])
-            self._pmid_names.append(pmid)
-            abstracts.append(abstract)
-
-            for ann_id, symbol in annotations:
-                idx = np.searchsorted(self._ann_ids, ann_id)
-                if idx >= len(self._ann_ids) or ann_id != self._ann_ids[idx]:
-                    self._ann_ids.insert(idx, ann_id)
-                    self._ann_symbols.insert(idx, symbol)
-                elif len(symbol) < len(self._ann_symbols[idx]):
-                    # Prefer smaller symbols
-                    self._ann_symbols[idx] = symbol
-
-        return abstracts
-
     def _parse_doc(
         self, doc: ET.Element
-    ) -> tuple[str, str, list[tuple[int, str]]]:
+    ) -> tuple[int, str, int | None, list[tuple[int, str | None]]]:
         id_field = doc.find("id")
 
         # I don't think this should ever happen so raising an error to make it
@@ -188,9 +284,30 @@ class _BiocParser:
         if pmid is None:
             raise ValueError("Document missing ID field.")
 
+        passage = doc.find("passage")
+        if pmid.startswith("PMC") and passage:
+            pmids = [
+                infon.text
+                for infon in passage.iterfind("infon")
+                if infon.attrib["key"] == "article-id_pmid" and infon.text
+            ]
+            if len(pmids):
+                pmid = pmids[0]
+            else:
+                raise ValueError("Document missing ID field.")
+
+        year: int | None = None
+        if passage:
+            years = [
+                infon.text
+                for infon in passage.iterfind("infon")
+                if infon.attrib["key"] == "year" and infon.text
+            ]
+            year = int(years[0]) if len(years) else None
+
         abstracts_elements = self._get_abstracts(doc)
         stripped_abstract = "".join(
-            self._strip_abstract(abstract) for abstract in abstracts_elements
+            self._mask_abstract(abstract) for abstract in abstracts_elements
         )
 
         annotations = [
@@ -202,10 +319,10 @@ class _BiocParser:
                 ),
                 [],
             )
-            if (ann_id is not None) and (ann_symbol is not None)
+            if (ann_id is not None)
         ]
 
-        return (pmid, stripped_abstract, annotations)
+        return (int(pmid), stripped_abstract, year, annotations)
 
     def _get_abstracts(self, doc: ET.Element) -> list[ET.Element]:
         return [
@@ -249,14 +366,11 @@ class _BiocParser:
                             int(infon.text) if infon.text is not None else None
                         )
 
-                return (
-                    ann_id,
-                    symbol.text if symbol is not None else None,
-                )
+                return (ann_id, symbol.text if symbol is not None else None)
 
         return (None, None)
 
-    def _strip_abstract(self, passage: ET.Element) -> str:
+    def _mask_abstract(self, passage: ET.Element) -> str:
         offset_field = passage.find("offset")
         if offset_field is None:
             raise ValueError("Abstract missing offset field")
@@ -278,9 +392,16 @@ class _BiocParser:
 
             pos_start = int(loc.attrib["offset"]) - offset
             pos_end = pos_start + int(loc.attrib["length"])
-            mask[pos_start:pos_end] = 0
+            mask[pos_start + 1 : pos_end] = 0
+            mask[pos_start] = -1
 
-        return "".join((letter for i, letter in enumerate(text) if mask[i]))
+        return "".join(
+            (
+                letter if mask[i] > 0 else self.mask_token
+                for i, letter in enumerate(text)
+                if mask[i]
+            )
+        )
 
     def _collect_annotations(
         self, passage: ET.Element
@@ -291,62 +412,20 @@ class _BiocParser:
             if self._is_type(ann, self.ann_type)
         ]
 
-    def _embed(self, abstracts: list[str]) -> list[jnp.ndarray]:
-        start_idx = 0
-        end_idx = min(self.batch_size, len(abstracts))
+    def _tokenize_and_embed(
+        self, examples: dict[str, Any], rank: int
+    ) -> dict[str, Any]:
+        device = f"cuda:{(rank or 0) % torch.cuda.device_count()}"
+        self.model.to(device)
+        inputs = self.tokenizer(
+            examples["abstract"],
+            return_tensors="pt",
+            padding=True,
+            truncation=True,
+            max_length=self.max_tokens,
+        ).to(device)
 
-        features: list[jnp.ndarray] = []
-        while start_idx < end_idx:
-            inputs = self.tokenizer(
-                abstracts[start_idx:end_idx],
-                return_tensors="jax",
-                padding=True,
-                truncation=True,
-                max_length=self.max_tokens,
-            )
-            outputs = self.model(**inputs)
-            features.append(outputs.last_hidden_state[:, 0, :])
-
-            start_idx = end_idx
-            end_idx = min(end_idx + self.batch_size, len(abstracts))
-
-        return features
-
-    def to_arrays(
-        self,
-    ) -> tuple[jax.Array, np.ndarray[Any, np.dtype[np.bool]]]:
-        if len(self._features) == 0:
-            raise ValueError(
-                """No features were successfully created.
-
-                This was likely caused by all provided bioc files having parse
-                errors.
-                """
-            )
-        n_edges = sum((len(anns) for anns in self._edge_list))
-        data = np.ones((n_edges,), dtype=np.bool)
-        rows = np.zeros((n_edges,))
-        cols = np.zeros((n_edges,))
-        shape = (len(self._pmid_names), len(self._ann_ids))
-        count = 0
-        for i, anns in enumerate(self._edge_list):
-            for ann in anns:
-                rows[count] = i
-                # Convert original IDs to position. This drops information but
-                # original IDs may have large gaps between them making the
-                # number of columns huge. This doesn't directly matter for
-                # sparse arrays but it makes masks significantly larger than
-                # needed.
-                cols[count] = np.searchsorted(self._ann_ids, ann)
-                count += 1
-
-        return (
-            jnp.concat(self._features),
-            sp.sparse.coo_array((data, (rows, cols)), shape).tocsc(),
-        )
-
-    def sample_names(self) -> np.ndarray[Any, np.dtype[np.str_]]:
-        return np.asarray(self._pmid_names)
-
-    def annotation_names(self) -> np.ndarray[Any, np.dtype[np.str_]]:
-        return np.asarray(self._ann_symbols)
+        with torch.no_grad():
+            return {
+                "embedding": self.model(**inputs).last_hidden_state[:, 0, :]
+            }
