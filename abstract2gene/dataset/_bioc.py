@@ -148,14 +148,24 @@ class _BiocParser:
 
             return [table["GeneID"].iloc[idx] for idx in range(start, end)]
 
+        def sorted_in(arr, v) -> bool:
+            idx = np.searchsorted(arr, v)
+            return idx < len(arr) and arr[idx] == v
+
         examples["gene2pubmed"] = [
             get_genes(pmid) for pmid in examples["pmid"]
+        ]
+
+        # Remove gene IDs not seen in BioC files. Rare but they exist.
+        examples["gene2pubmed"] = [
+            [g for g in pub_genes if sorted_in(self._ann_ids, g)]
+            for pub_genes in examples["gene2pubmed"]
         ]
 
         return examples
 
     def parse(self):
-        print(f"Starting embedding for {len(self.archives)} archives.")
+        print(f"Reading files from {len(self.archives)} archives.")
         pub_data = list(self._grab_publication_data())
         dataset = datasets.Dataset.from_list(pub_data).map(
             self._tokenize_and_embed,
@@ -167,10 +177,12 @@ class _BiocParser:
             desc="Embed Abstracts",
         )
 
+        features = dataset.features.copy()
+        features["embedding"].length = len(dataset["embedding"][0])
+
         # If first batch of pubmed genes is all empty (unlikely with a large
         # batch), datasets will detect a null feature type instead of using
         # int. Explicitly pass it the correct type to prevent this.
-        features = dataset.features.copy()
         features["gene2pubmed"] = features["gene2pubtator"]
         self._pubmed_edges = self._read_pubmed_data()
         dataset = dataset.map(
@@ -194,13 +206,11 @@ class _BiocParser:
             return anns
 
         self._ann_symbols = deduplicate(self._ann_symbols)
+
         features["gene2pubtator"] = datasets.Sequence(
             datasets.ClassLabel(names=self._ann_symbols)
         )
-        features["gene2pubmed"] = datasets.Sequence(
-            datasets.ClassLabel(names=self._ann_symbols)
-        )
-        features["embedding"].length = len(dataset["embedding"][0])
+        features["gene2pubmed"] = features["gene2pubtator"]
 
         def repack_labels(
             examples: dict[str, list[Any]],
