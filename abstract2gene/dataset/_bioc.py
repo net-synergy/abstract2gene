@@ -4,7 +4,6 @@ __all__ = ["bioc2dataset"]
 
 import contextlib
 import os
-import re
 import tarfile
 import xml.etree.ElementTree as ET
 from typing import Any, Callable, Iterable, Sequence
@@ -25,6 +24,8 @@ def bioc2dataset(
     ann_type="Gene",
     batch_size: int = 32,
     max_tokens: int = 512,
+    max_cpu: int = 1,
+    max_gpu: int = 1,
     cache_dir: str | None = None,
 ) -> datasets.Dataset:
     """Create a dataset from Pubtator's BioC archive files.
@@ -54,18 +55,17 @@ def bioc2dataset(
         passages are used not those from titles are full text. Annotations for
         the selected annotation type are stripped from the abstracts before
         embedding.
-    batch_size : int, default 50
+    batch_size : int, default 32
         Batch size used for embedding. Larger batch sizes may result in faster
-        processing but can exhaust memory. 50 was chosen as default since it
-        divides the number of publications in a file and the model is passed
-        all abstracts from a file at once. Note this is unrelated to the
-        resulting dataset's batch size.
+        processing but can exhaust memory.
     max_tokens : int, default 512
         The number of tokens the tokenizer will return. The tokenizer creates
         arrays of tokens with exactly this many tokens, truncated longer
         abstracts and padding smaller abstracts. This allows the model to run
         on multiple abstracts at once. Larger values take longer to process but
         smaller values risk dropping information.
+    max_cpu, max_gpu : int, default 1
+        How many process to run in parallel for CPU and GPU.
     cache_dir : Optional str
         Where to cache and retrieve BioC archives locally. Defaults to
         `abstract2gene.storage.default_cache_dir`. A different cache can also
@@ -78,8 +78,22 @@ def bioc2dataset(
         list of labels.
 
     """
+    if not torch.cuda.is_available():
+        print("No GPU found, using CPU only.")
+        max_gpu = max_cpu
+    elif torch.cuda.device_count() < max_gpu:
+        print("Max GPU cannot be greater than available GPUs, reducing.")
+        max_gpu = torch.cuda.device_count()
+
     parser = _BiocParser(
-        archives, n_files, ann_type, batch_size, max_tokens, cache_dir
+        archives,
+        n_files,
+        ann_type,
+        batch_size,
+        max_tokens,
+        max_cpu,
+        max_gpu,
+        cache_dir,
     )
     return parser.parse()
 
@@ -92,6 +106,8 @@ class _BiocParser:
         ann_type: str,
         batch_size: int,
         max_tokens: int,
+        max_cpu: int,
+        max_gpu: int,
         cache_dir: str | None,
     ):
         self.cache_dir = cache_dir
@@ -99,6 +115,8 @@ class _BiocParser:
         self.ann_type = ann_type
         self.batch_size = batch_size
         self.max_tokens = max_tokens
+        self.max_cpu = max_cpu
+        self.max_gpu = max_gpu
 
         model_id = "allenai/specter"
         self.tokenizer = AutoTokenizer.from_pretrained(model_id)
@@ -167,28 +185,21 @@ class _BiocParser:
     def parse(self):
         print(f"Reading files from {len(self.archives)} archives.")
         pub_data = list(self._grab_publication_data())
-        dataset = datasets.Dataset.from_list(pub_data).map(
-            self._tokenize_and_embed,
-            batched=True,
-            batch_size=self.batch_size,
-            with_rank=True,
-            remove_columns="abstract",
-            num_proc=torch.cuda.device_count(),
-            desc="Embed Abstracts",
-        )
-
-        features = dataset.features.copy()
-        features["embedding"].length = len(dataset["embedding"][0])
+        dataset = datasets.Dataset.from_list(pub_data)
 
         # If first batch of pubmed genes is all empty (unlikely with a large
         # batch), datasets will detect a null feature type instead of using
         # int. Explicitly pass it the correct type to prevent this.
+        features = dataset.features.copy()
         features["gene2pubmed"] = features["gene2pubtator"]
+
         self._pubmed_edges = self._read_pubmed_data()
         dataset = dataset.map(
             self._attach_pubmed_genes,
             batched=True,
             features=features,
+            batch_size=100,
+            num_proc=self.max_cpu,
             desc="Attach pubmed genes",
         )
 
@@ -225,28 +236,38 @@ class _BiocParser:
             ]
             return examples
 
-        return dataset.map(
+        dataset = dataset.map(
             repack_labels,
             batched=True,
             features=features,
+            num_proc=self.max_cpu,
             desc="Repack label IDs",
         )
 
-    def _grab_publication_data(self) -> dict[str, Any]:
-        for i, archive in enumerate(self.archives):
+        dataset = dataset.map(
+            self._tokenize_and_embed,
+            batched=True,
+            batch_size=self.batch_size,
+            with_rank=True,
+            remove_columns="abstract",
+            num_proc=self.max_gpu,
+            desc="Embed Abstracts",
+        )
+        dataset.features["embedding"].length = len(dataset["embedding"][0])
+
+        return dataset
+
+    def _grab_publication_data(self) -> Iterable[dict[str, Any]]:
+        for archive in self.archives:
             with tarfile.open(archive, "r") as tar:
                 desc = os.path.basename(archive)
-                total = len(self.iterfiles(tar))
-                with tqdm(total=total, desc=desc, position=i) as pbar:
-                    for file in self.iterfiles(tar):
-                        try:
-                            with tar.extractfile(file) as fd:  # type: ignore[union-attr]
-                                for pub_data in self._parse_file(fd):
-                                    yield pub_data
-                        except ET.ParseError as e:
-                            print(f"Failed to parse {file}:\n  {e.msg}")
-
-                        pbar.update()
+                for file in tqdm(self.iterfiles(tar), desc=desc):
+                    try:
+                        with tar.extractfile(file) as fd:  # type: ignore[union-attr]
+                            for pub_data in self._parse_file(fd):
+                                yield pub_data
+                    except ET.ParseError as e:
+                        print(f"Failed to parse {file}:\n  {e.msg}")
 
     def _parse_file(self, fd) -> Iterable[dict[str, Any]]:
         tree = ET.parse(fd)
@@ -423,9 +444,13 @@ class _BiocParser:
         ]
 
     def _tokenize_and_embed(
-        self, examples: dict[str, Any], rank: int
+        self, examples: dict[str, Any], rank: int | None
     ) -> dict[str, Any]:
-        device = f"cuda:{(rank or 0) % torch.cuda.device_count()}"
+        device = (
+            f"cuda:{(rank or 0) % torch.cuda.device_count()}"
+            if torch.cuda.is_available()
+            else "cpu"
+        )
         self.model.to(device)
         inputs = self.tokenizer(
             examples["abstract"],
