@@ -124,13 +124,14 @@ class DataLoaderDict(UserDict):
         for dl in self.data.values():
             dl.reset_rng()
 
-    def split_batch(self, batch: Samples) -> tuple[Samples, Samples]:
+    def split_batch(self, batch: Samples) -> tuple[jax.Array, Samples]:
         """Split the samples of a batch into templates and samples.
 
         The first `labels_per_batch * template_size` columns of a batch's
         samples are the templates. This splits the batch's samples into the
-        templates and the actual training or testing samples. The templates
-        will be average so there's one template per label.
+        templates and the actual training or testing samples. Templates are
+        returned as a 3d Array with dimensions `labels_per_batch` x
+        `template_size` x `n_features`.
 
         Returns
         -------
@@ -145,13 +146,11 @@ class DataLoaderDict(UserDict):
 
         n_labels = (batch.shape[0] - self.batch_size) // self.template_size
         n_temp_rows = n_labels * self.template_size
-        templates = (
-            batch[:n_temp_rows, :]
-            .reshape((n_labels, self.template_size, -1))
-            .mean(axis=1)
+        templates = batch[:n_temp_rows, :].reshape(
+            (n_labels, self.template_size, -1)
         )
-        feats = batch[n_temp_rows:, :]
-        return (templates, feats)
+        samples = batch[n_temp_rows:, :]
+        return (templates, samples)
 
 
 class DataLoader:

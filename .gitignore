@@ -3,3 +3,4 @@ figures/
 example_results/
 *.png
 *.tsv
+tmp/
