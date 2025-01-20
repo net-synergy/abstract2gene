@@ -11,7 +11,7 @@ __all__ = [
 
 import os
 from collections import UserDict
-from typing import Any, Iterable, Sequence, TypeAlias
+from typing import Any, Iterable, TypeAlias
 
 import datasets
 import jax
@@ -21,9 +21,8 @@ import scipy as sp
 
 from abstract2gene.storage import default_data_dir
 
-from ..typing import Batch, Features, Names
+from ..typing import Batch, Names, Samples
 
-InFeatures: TypeAlias = np.ndarray[Any, np.dtype[np.double]] | jax.Array
 InLabels: TypeAlias = sp.sparse.csc_array
 
 
@@ -125,12 +124,12 @@ class DataLoaderDict(UserDict):
         for dl in self.data.values():
             dl.reset_rng()
 
-    def split_batch(self, batch: Features) -> tuple[Features, Features]:
-        """Split the features of a batch into templates and features.
+    def split_batch(self, batch: Samples) -> tuple[Samples, Samples]:
+        """Split the samples of a batch into templates and samples.
 
         The first `labels_per_batch * template_size` columns of a batch's
-        features are the templates. This splits the batches features into the
-        templates and the actual training or testing features. The templates
+        samples are the templates. This splits the batch's samples into the
+        templates and the actual training or testing samples. The templates
         will be average so there's one template per label.
 
         Returns
@@ -156,7 +155,7 @@ class DataLoaderDict(UserDict):
 
 
 class DataLoader:
-    """Collects features and labels to load batches.
+    """Collects samples and labels to load batches.
 
     Example:
     -------
@@ -173,7 +172,7 @@ class DataLoader:
 
     def __init__(
         self,
-        features: InFeatures,
+        samples: Samples,
         labels: InLabels,
         sample_names: Names,
         label_names: Names,
@@ -183,7 +182,7 @@ class DataLoader:
 
         Parameters
         ----------
-        features : jax.Array
+        samples : jax.Array
             Should be in the form n_samples x n_features
         labels : 2d sparse array (csc form)
             Should be in the form n_samples x n_labels.
@@ -195,7 +194,7 @@ class DataLoader:
             The seed for the random number generator.
 
         """
-        self.features = features
+        self.samples = samples
         self.sample_names = sample_names
         self.labels = labels
         self.label_names = label_names
@@ -275,7 +274,7 @@ class DataLoader:
     @property
     def n_features(self) -> int:
         """Return the dimensionality of the feature vector."""
-        return self.features.shape[1]
+        return self.samples.shape[1]
 
     @property
     def n_labels(self) -> int:
@@ -291,7 +290,7 @@ class DataLoader:
     @property
     def n_samples(self) -> int:
         """Return the number of samples."""
-        return self.features.shape[0]
+        return self.samples.shape[0]
 
     def __repr__(self) -> str:
         data = (self.n_samples, self.n_features, self.n_labels)
@@ -299,7 +298,7 @@ class DataLoader:
 
     def __getitem__(self, key) -> DataLoader:
         new = DataLoader(
-            self.features[key, :],
+            self.samples[key, :],
             self.labels[key, :],
             self.sample_names[key],
             self.label_names,
@@ -317,7 +316,7 @@ class DataLoader:
         return self._sample_names
 
     def batch(self) -> Iterable[Batch]:
-        """Generate batches of features to train on."""
+        """Generate batches of samples to train on."""
         label_pool = self._rng.permutation(self._label_idx)
         cut = self.labels_per_batch * (
             label_pool.shape[0] // self.labels_per_batch
@@ -340,7 +339,7 @@ class DataLoader:
             for idx in range(labels.shape[1])
         ]
 
-        templates = self.features[
+        templates = self.samples[
             np.concat(tuple(samps[:ts] for samps in label_samples)), :
         ]
 
@@ -376,13 +375,13 @@ class DataLoader:
                 jnp.concat(
                     (
                         templates,
-                        *tuple(self.features[draw, :] for draw in draws),
+                        *tuple(self.samples[draw, :] for draw in draws),
                     )
                 ),
                 jnp.concat(tuple(labels[draw, :].todense() for draw in draws)),
             )
 
-    def get_templates(self) -> Features:
+    def get_templates(self) -> Samples:
         """Return a matrix of templates created from dataset.
 
         Randomly pulls `self.template_size` samples for each label, averages
@@ -414,25 +413,25 @@ class DataLoader:
             np.concat(tuple(samps[ts:] for samps in label_samples))
         )
 
-        dtype = np.dtype((self.features.dtype, (ts, self.n_features)))
+        dtype = np.dtype((self.samples.dtype, (ts, self.n_features)))
         templates = jnp.asarray(
             np.fromiter(
                 (
-                    self.features[samps, :].mean(axis=0)
+                    self.samples[samps, :].mean(axis=0)
                     for samps in template_samples
                 ),
                 count=self.labels.shape[1],
                 dtype=dtype,
             )
         )
-        self.features = self.features[remaining_samples, :]
+        self.samples = self.samples[remaining_samples, :]
 
         return templates
 
 
 def from_huggingface(
     dataset: datasets.Dataset,
-    features: str = "embedding",
+    samples: str = "embedding",
     sample_id: str = "pmid",
     labels: str = "gene2pubtator",
     split: dict[str, float] = {"train": 0.8, "test": 0.1, "validate": 0.1},
@@ -448,8 +447,8 @@ def from_huggingface(
     ----------
     dataset : dataset.DataSet
         The dataset to convert.
-    features : str, default "embedding"
-        The name of the dataset feature to use as features.
+    samples : str, default "embedding"
+        The name of the dataset feature to use as samples.
     sample_id : str, default "pmid"
         The name of the dataset feature to use as IDs for the samples.
     labels : str, default "gene2pubtator"
@@ -521,16 +520,11 @@ def from_huggingface(
             "validate": mask == 3,
         }
 
-    # dataset = dataset.filter(
-    #     lambda examples: [yr > 2023 for yr in examples["year"] if yr],
-    #     batched=True,
-    #     batch_size=5000,
-    # )
     rng: np.random.Generator = np.random.default_rng(seed)
     new_seed = rng.integers(9999, size=len(split)).astype(int)
     splabels = to_sparse_labels(dataset, labels)
     label_masks = split_labels(splabels, split, rng)
-    feats = dataset.with_format("jax", columns=[features])[features]
+    feats = dataset.with_format("jax", columns=[samples])[samples]
     labeled = splabels.sum(axis=1) > 0
 
     unlabeled = None

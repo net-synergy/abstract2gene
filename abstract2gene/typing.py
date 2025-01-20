@@ -3,10 +3,9 @@ __all__ = ["Fetures", "Labels", "Batch", "PyTree", "Names"]
 from typing import Any, Sequence
 
 import jax
-import numpy as np
 
-Features = jax.Array
+Samples = jax.Array
 Labels = jax.Array
-Batch = tuple[Features, Labels]
+Batch = tuple[Samples, Labels]
 PyTree = dict[str, Any]
 Names = Sequence[str]

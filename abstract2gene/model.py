@@ -26,7 +26,7 @@ from flax import nnx
 from flax.metrics import tensorboard
 
 from .dataset import DataLoaderDict
-from .typing import Batch, Features, Labels, Names
+from .typing import Batch, Labels, Names, Samples
 
 RESULT_TEMPLATE = "results/{name}_validation.tsv"
 RESULTS_TABLE = "results/model_comparison.tsv"
@@ -67,7 +67,7 @@ class Model(nnx.Module):
         """
         self.name = name
         self.result_file = RESULT_TEMPLATE.format(name=name)
-        self.templates: Features | None = None
+        self.templates: Samples | None = None
         self.label_names: Names | None = None
 
     def __call__(self, x: jax.Array) -> jax.Array:
@@ -82,7 +82,7 @@ class Model(nnx.Module):
         self._name = value
         self.result_file = RESULT_TEMPLATE.format(name=value)
 
-    def attach_templates(self, templates: Features, names: Names) -> None:
+    def attach_templates(self, templates: Samples, names: Names) -> None:
         """Add the templates for the model.
 
         These are used for prediction---outside of training. During training,
@@ -96,7 +96,7 @@ class Model(nnx.Module):
         self.templates = self(templates)
         self.label_names = names
 
-    def predict(self, x: Features) -> jax.Array:
+    def predict(self, x: Samples) -> jax.Array:
         """Calculate similarity of samples `x` to templates `template`.
 
         Parameters
@@ -183,7 +183,7 @@ class Trainer:
 
     # @nnx.jit
     def loss_fn(
-        self, model: Model, x: Features, templates: Features, labels: Labels
+        self, model: Model, x: Samples, templates: Samples, labels: Labels
     ) -> tuple[float, jax.Array]:
         """Score the model's prediction success against known labels."""
         x = model(x)
@@ -306,7 +306,7 @@ class SingleLayer(Model):
         rngs = nnx.Rngs(seed)
         self.linear = nnx.Linear(dims_in, dims_out, rngs=rngs)
 
-    def __call__(self, x: Features):
+    def __call__(self, x: Samples):
         return nnx.gelu(self.linear(x))
 
 
