@@ -4,12 +4,14 @@ from __future__ import annotations
 
 __all__ = [
     "DataLoader",
+    "DataLoaderDict",
     "from_huggingface",
     "load_dataset",
 ]
 
 import os
-from typing import Any, Iterable, TypeAlias
+from collections import UserDict
+from typing import Any, Iterable, Sequence, TypeAlias
 
 import datasets
 import jax
@@ -19,39 +21,153 @@ import scipy as sp
 
 from abstract2gene.storage import default_data_dir
 
-from ..typing import Batch, Features, Labels, Names
+from ..typing import Batch, Features, Names
 
 InFeatures: TypeAlias = np.ndarray[Any, np.dtype[np.double]] | jax.Array
 InLabels: TypeAlias = sp.sparse.csc_array
 
 
+class DataLoaderDict(UserDict):
+    def __init__(
+        self,
+        mapping: dict[str, DataLoader],
+        batch_size: int = 64,
+        template_size: int = 32,
+        labels_per_batch: int = -1,
+    ):
+        """Initialize a DataLodareDict.
+
+        Parameters
+        ----------
+        mapping : dict[str, DataLoader]
+            The dictionary of DataLoaders to handle.
+        batch_size : int, default 64
+            How many samples should make up a batch.
+        template_size : int, default 32
+            The number of samples averaged together to make a template.
+        labels_per_batch : int, Optional
+            How many labels to use when making a batch. By default uses all
+            labels. If less than the total number of labels, batches will be
+            made from a pool of samples labeled with at least one of the
+            randomly selected `labels_per_batch` labels (plus ~10% of a batches
+            samples will not include one of the batch labels). For example, if
+            `labels_per_batch` is 4, 4 labels will be randomly selected,
+            batches will be made of samples with these labels until the pool
+            runs dry. The resulting batch labels will have 4 columns.
+
+        """
+        super().__init__(mapping)
+        self._batch_size = batch_size
+        self._template_size = template_size
+        self.labels_per_batch = labels_per_batch
+        self.n_features = mapping[list(mapping.keys())[0]].n_features
+        self.n_samples = mapping[list(mapping.keys())[0]].n_samples
+
+    @property
+    def batch_size(self) -> int:
+        return self._batch_size
+
+    @batch_size.setter
+    def batch_size(self, bs: int):
+        self._batch_size = bs
+        self._update_params()
+
+    @property
+    def template_size(self) -> int:
+        return self._template_size
+
+    @template_size.setter
+    def template_size(self, ts: int):
+        self._template_size = ts
+        self._update_params()
+
+    @property
+    def labels_per_batch(self) -> int:
+        return self._labels_per_batch
+
+    @labels_per_batch.setter
+    def labels_per_batch(self, n: int):
+        self._labels_per_batch = n
+        self._update_params()
+
+    def __repr__(self) -> str:
+        data = (self.batch_size, self.template_size, self.labels_per_batch)
+        out = "batch size: {}, template size: {}, labels per batch: {}"
+        out = out.format(*data) + "\n  {"
+        max_len = max((len(k) for k in self.data))
+        for k, v in self.data.items():
+            spacer = " " * (max_len - len(k))
+            out += f"\n    {spacer}{k}: {v}"
+
+        out += "\n  }"
+        return out
+
+    def __getitem__(self, key):
+        if isinstance(key, str):
+            return super().__getitem__(key)
+
+        return DataLoaderDict(
+            {k: v[key] for k, v in self.data.items()},
+            batch_size=self.batch_size,
+            template_size=self.template_size,
+            labels_per_batch=self.labels_per_batch,
+        )
+
+    def _update_params(self):
+        {
+            dl._update_params(
+                self.batch_size, self.template_size, self.labels_per_batch
+            )
+            for dl in self.data.values()
+        }
+
+    def reset_rngs(self):
+        for dl in self.data.values():
+            dl.reset_rng()
+
+    def split_batch(self, batch: Features) -> tuple[Features, Features]:
+        """Split the features of a batch into templates and features.
+
+        The first `labels_per_batch * template_size` columns of a batch's
+        features are the templates. This splits the batches features into the
+        templates and the actual training or testing features. The templates
+        will be average so there's one template per label.
+
+        Returns
+        -------
+        templates : jax.Array
+            The templates for each label.
+        samples : jax.Array
+            The samples.
+
+        """
+        # Since self.labels_per_batch may be -1 (for all labels) can't use the
+        # variable so calculate n labels instead.
+
+        n_labels = (batch.shape[0] - self.batch_size) // self.template_size
+        n_temp_rows = n_labels * self.template_size
+        templates = (
+            batch[:n_temp_rows, :]
+            .reshape((n_labels, self.template_size, -1))
+            .mean(axis=1)
+        )
+        feats = batch[n_temp_rows:, :]
+        return (templates, feats)
+
+
 class DataLoader:
-    """Collects features and labels.
-
-    Data is split into training, testing, and validation sets and batches
-    (features, labels) can be iterated over with the corresponding methods:
-    `test`, `train`, `validate`.
-
-    Batch data consists only of labeled data. To get unlabeled data, use
-    `self.unlabeled`.
-
-    Labels for each batch is a column vector of batch_size x 1.
-    Label is True for half the samples and False for the other half.
+    """Collects features and labels to load batches.
 
     Example:
     -------
-    data = a2g.datasets.bioc2dataset(range(10, 20))
-    for batch in data.train():
+    data = load_dataset("path/to/dataset")
+    for batch in data.batch():
        train_step(model, batch)
 
     See Also:
     --------
-    Suggested methods for creating a dataset.
-    `abstract2gene.datasets.net2dataset`
+    Suggested method for creating a dataset.
     `abstract2gene.datasets.bioc2dataset`
-
-    For storing templates.
-    `abstract2gene.datasets.Template`
 
     """
 
@@ -61,104 +177,92 @@ class DataLoader:
         labels: InLabels,
         sample_names: Names,
         label_names: Names,
-        train_test_val_split: tuple[float, float, float] = (0.7, 0.2, 0.1),
-        batch_size: int = 64,
-        template_size: int = 32,
         seed: int = 0,
     ):
         """Construct a DataLoader.
 
         Parameters
         ----------
-        features : ndarray[Any, dtype[double]]
+        features : jax.Array
             Should be in the form n_samples x n_features
         labels : 2d sparse array (csc form)
             Should be in the form n_samples x n_labels.
-        sample_names : ndarray (dtype str_ or object)
+        sample_names : list[str]
             One dimensional array of feature names (such as PMIDs)
-        label_names : ndarray (dtype str_ or object)
+        label_names : list[str]
             A vector of names for the columns of labels.
-        train_test_val_split : tuple[float, float, float], Optional
-            The proportion of all samples to be used for training, testing, and
-            validation. Should add up to 1. Labels are split into sets.
-        batch_size : int, default 64
-            How many samples should make up a batch.
-        template_size : int
-            The number of samples averaged together to make a template.
         seed : int, default 0
             The seed for the random number generator.
 
         """
-        self.features = jnp.asarray(features)
+        self.features = features
         self.sample_names = sample_names
         self.labels = labels
         self.label_names = label_names
 
-        # Set hidden properties to prevent repeatedly triggering reshuffle
-        # before dataloader fully initialized.
-        self._batch_size = batch_size
-        self._template_size = template_size
-        self._split = train_test_val_split
-
         self._seed = seed
         self._rng: np.random.Generator = np.random.default_rng(seed)
-        self._sample_names = np.asarray([""], dtype=np.dtype(np.str_))
-        self._label_name = np.asarray([""], dtype=np.dtype(np.str_))[0]
+        self._sample_names: list[str] = []
+        self._label_names: list[str] = []
 
-        self._masks: dict[str, np.ndarray[Any, np.dtype[np.bool]]] = {}
-        self._unlabeled_mask: np.ndarray[Any, np.dtype[np.bool]] = np.asarray(
-            []
-        )
-        self.reshuffle()
+        self._label_idx: np.ndarray[Any, np.dtype[np.bool]] = np.asarray([])
+        self._templates_dropped = False
 
-    def reshuffle(self) -> None:
-        """Reshuffle the training, test, and validation sets."""
-        tol = 1e-5
-        split = self._split
+        self._bs = 0
+        self._ts = 0
+        self._labels_per_batch = 0
 
-        assert sum(split) > (1 - tol) and sum(split) < (1 + tol)
+    def _update_params(
+        self, batch_size: int, template_size: int, labels_per_batch: int
+    ) -> None:
+        self._bs = batch_size
+        self._ts = template_size if not self._templates_dropped else 0
+        self._labels_per_batch = labels_per_batch
+        self._all_labels = labels_per_batch <= 0
 
-        min_occurance = self.batch_size + self.template_size
-        label_mask = self.labels.sum(axis=0) >= min_occurance
+        if self._all_labels:
+            min_occurance = self.template_size
+        else:
+            min_occurance = (
+                self.batch_size // self.labels_per_batch
+            ) + self.template_size
 
-        train_size = int(self.n_labels * split[0])
-        test_size = int(self.n_labels * split[1])
-        val_size = self.n_labels - (train_size + test_size)
+        self._label_idx = np.arange(self.labels.shape[1])[
+            self.labels.sum(axis=0) > min_occurance
+        ]
 
-        mask = np.zeros((self.labels.shape[1]))
-        mask[label_mask] = np.concat(
-            tuple(
-                np.ones(sz) + i
-                for i, sz in enumerate((train_size, test_size, val_size))
-            )
-        )
-        mask[label_mask] = self._rng.permutation(mask[label_mask])
-
-        self._masks = {
-            "train": mask == 1,
-            "test": mask == 2,
-            "validate": mask == 3,
-        }
-
-        self._unlabeled_mask = self.labels.sum(axis=1) == 0
+        if self._all_labels:
+            self._labels_per_batch = self.n_labels
 
     @property
     def batch_size(self) -> int:
-        return self._batch_size
+        return self._bs
 
     @batch_size.setter
-    def batch_size(self, bs: int):
-        self._batch_size = bs
-        self.reshuffle()
+    def batch_size(self, ts: int):
+        raise RuntimeError(
+            "Set the batch size through the DataLoaderDict class"
+        )
 
     @property
     def template_size(self) -> int:
-        return self._template_size
+        return self._ts
 
     @template_size.setter
     def template_size(self, ts: int):
-        self._template_size = ts
-        self.reshuffle()
+        raise RuntimeError(
+            "Set the template size through the DataLoaderDict class"
+        )
+
+    @property
+    def labels_per_batch(self) -> int:
+        return self._labels_per_batch
+
+    @labels_per_batch.setter
+    def labels_per_batch(self, ts: int):
+        raise RuntimeError(
+            "Set the labels per batch through the DataLoaderDict class"
+        )
 
     def reset_rng(self, seed: int | None = None) -> None:
         """Reset the RNG to the original seed.
@@ -167,16 +271,6 @@ class DataLoader:
         """
         seed = seed or self._seed
         self._rng = np.random.default_rng(seed)
-
-    @property
-    def train_test_val_split(self):
-        return self._split
-
-    @train_test_val_split.setter
-    def train_test_val_split(self, new_split: tuple[float, float, float]):
-        """Provide new proportions to split the data then reshuffle."""
-        self._split = new_split
-        self.reshuffle()
 
     @property
     def n_features(self) -> int:
@@ -189,162 +283,166 @@ class DataLoader:
 
         Note this is the number of labels with at least batch_size +
         template_size samples not the raw number of columns in the label
-        matrix. As such this value can change if batch size and template size
-        are reset.
+        matrix. As such this value can change if batch size, template size, or
+        labels_per_batch are reset.
         """
-        min_occurance = self.batch_size + self.template_size
-        label_mask = self.labels.sum(axis=0) >= min_occurance
-        return sum(label_mask)
+        return len(self._label_idx)
 
     @property
     def n_samples(self) -> int:
         """Return the number of samples."""
         return self.features.shape[0]
 
-    @property
-    def n_train(self) -> int:
-        """Return the size of the training set."""
-        return self._masks["train"].sum()
+    def __repr__(self) -> str:
+        data = (self.n_samples, self.n_features, self.n_labels)
+        return "[samples: {}, features: {}, labels: {}]".format(*data)
 
-    @property
-    def n_test(self) -> int:
-        """Return the size of the testing set."""
-        return self._masks["test"].sum()
+    def __getitem__(self, key) -> DataLoader:
+        new = DataLoader(
+            self.features[key, :],
+            self.labels[key, :],
+            self.sample_names[key],
+            self.label_names,
+            self._seed,
+        )
+        new._update_params(self._bs, self._ts, self._labels_per_batch)
+        return new
 
-    @property
-    def n_validate(self) -> int:
-        """Return the size of the validation set."""
-        return self._masks["validate"].sum()
-
-    @property
-    def unlabeled(self) -> jax.Array:
-        """Return features for unlabeled samples."""
-        return self.features[self._unlabeled_mask, :]
-
-    def batch_label_name(self) -> str:
+    def batch_label_name(self) -> Names:
         """Return the current batch's label name."""
-        return self._label_name
+        return self._label_names
 
     def batch_sample_names(self) -> Names:
         """Return the names for the batch's samples."""
         return self._sample_names
 
-    def train(self) -> Iterable[Batch]:
-        """Return random batches of training data."""
-        return self._batch("train")
-
-    def test(self) -> Iterable[Batch]:
-        """Return random batches of testing data."""
-        return self._batch("test")
-
-    def validate(self) -> Iterable[Batch]:
-        """Return random batches of validation data."""
-        return self._batch("validate")
-
-    def _batch(
-        self,
-        task: str,
-    ) -> Iterable[Batch]:
+    def batch(self) -> Iterable[Batch]:
         """Generate batches of features to train on."""
-        labels = self.labels[:, self._masks[task]]
-        label_pool = self._rng.permutation(np.arange(labels.shape[1]))
-        for label_idx in label_pool:
-            self._label_name = self.label_names[self._masks[task]][label_idx]
-            yield self._split_labels(
-                labels[:, [label_idx]].toarray().squeeze(), self.batch_size
-            )
+        label_pool = self._rng.permutation(self._label_idx)
+        cut = self.labels_per_batch * (
+            label_pool.shape[0] // self.labels_per_batch
+        )
+        label_pool = label_pool[:cut].reshape((-1, self.labels_per_batch))
+        for batch_labels in label_pool:
+            self._label_names = [self.label_names[idx] for idx in batch_labels]
+            for batch in self._split_labels(self.labels[:, batch_labels]):
+                yield batch
 
     def _split_labels(
         self,
-        indices: Labels,
-        batch_size: int,
-    ) -> Batch:
-        samples = np.arange(indices.shape[0])
-        samples_true = self._rng.permutation(samples[indices])
-        samples_false = self._rng.permutation(
-            samples[
-                np.logical_not(np.logical_or(indices, self._unlabeled_mask))
-            ]
-        )
-        mini_batch_size = batch_size // 2
+        labels: sp.sparse.sparray,
+    ) -> Iterable[Batch]:
+        ts = self.template_size
+        bs = self.batch_size
 
-        self._sample_names = self.sample_names[
-            np.concat(
-                (
-                    samples_true[:mini_batch_size],
-                    samples_false[:mini_batch_size],
-                )
+        label_samples = [
+            self._rng.permutation(labels[:, [idx]].indices)
+            for idx in range(labels.shape[1])
+        ]
+
+        templates = self.features[
+            np.concat(tuple(samps[:ts] for samps in label_samples)), :
+        ]
+
+        rows = np.arange(self.labels.shape[0])
+        others_mask = labels.sum(axis=1) == 0
+        samples = [
+            self._rng.permutation(rows[others_mask]),
+            self._rng.permutation(
+                np.concat(tuple(samps[ts:] for samps in label_samples))
             ),
         ]
 
-        return (
-            self.features[
-                np.concat(
+        percent_true = 0.8
+        n_draw = [0, max(int(bs * percent_true), 1)]
+        n_draw[False] = bs - n_draw[True]
+
+        available = [len(pool) for pool in samples]
+        ptr = [0, 0]
+
+        labels = labels.astype(jnp.float32)
+        while all(
+            (p + n) < avail for p, n, avail in zip(ptr, n_draw, available)
+        ):
+            draws = [
+                pool[p : p + n] for pool, p, n in zip(samples, ptr, n_draw)
+            ]
+            ptr = [p + n for p, n in zip(ptr, n_draw)]
+            self._sample_names = [
+                self.sample_names[draw] for draw in np.concat(draws)
+            ]
+
+            yield (
+                jnp.concat(
                     (
-                        samples_true[:mini_batch_size],
-                        samples_false[:mini_batch_size],
+                        templates,
+                        *tuple(self.features[draw, :] for draw in draws),
                     )
                 ),
-                :,
-            ],
-            self.features[
-                samples_true[
-                    mini_batch_size : (mini_batch_size + self.template_size)
-                ],
-                :,
-            ].mean(axis=0, keepdims=True),
-            jnp.concat(
-                (
-                    jnp.ones((mini_batch_size, 1), dtype=jnp.bool),
-                    jnp.zeros((mini_batch_size, 1), dtype=jnp.bool),
-                ),
-                axis=0,
-            ),
-        )
+                jnp.concat(tuple(labels[draw, :].todense() for draw in draws)),
+            )
 
-    def get_templates(self) -> tuple[Features, Names]:
+    def get_templates(self) -> Features:
         """Return a matrix of templates created from dataset.
 
         Randomly pulls `self.template_size` samples for each label, averages
-        them together, and returns the templates. Use `self.label_names` to get
-        the corresponding names.
+        them together, and returns the templates.
+
+        *This is a destructive method*. The templates samples are dropped from
+        the dataset and the dataset's `template_size` is reduced to 0.
+
+        Names for the template labels can be found with `self.label_names`.
         """
         ts = self.template_size
-        frequent_labels = self.labels.sum(0) > ts
-        index = self._rng.permuted(
-            self.labels[:, frequent_labels]
+        frequent_labels = self.labels.sum(axis=0) > ts
+
+        self.labels = self.labels[:, frequent_labels]
+        self.label_names = self.label_names[frequent_labels]
+        self.template_size = 0
+        self._templates_dropped = True
+
+        idx = self._rng.permuted(
+            self.labels
             * (np.arange(self.labels.shape[0]) + 1).reshape((-1, 1)),
             axis=0,
         )
-        col_indices = (
-            index[index[:, i] > 0, i] - 1 for i in range(index.shape[1])
+        label_samples = [
+            idx[idx[:, i] > 0, i] - 1 for i in range(idx.shape[1])
+        ]
+        template_samples = [samps[:ts] for samps in label_samples]
+        remaining_samples = np.unique(
+            np.concat(tuple(samps[ts:] for samps in label_samples))
         )
 
-        dtype = np.dtype((self.features.dtype, (ts, self.features.shape[1])))
-        return (
-            jnp.asarray(
-                np.fromiter(
-                    (self.features[idx[:ts], :] for idx in col_indices),
-                    count=self.labels.shape[1],
-                    dtype=dtype,
-                ).mean(axis=1)
-            ),
-            self.label_names[frequent_labels],
+        dtype = np.dtype((self.features.dtype, (ts, self.n_features)))
+        templates = jnp.asarray(
+            np.fromiter(
+                (
+                    self.features[samps, :].mean(axis=0)
+                    for samps in template_samples
+                ),
+                count=self.labels.shape[1],
+                dtype=dtype,
+            )
         )
+        self.features = self.features[remaining_samples, :]
+
+        return templates
 
 
 def from_huggingface(
     dataset: datasets.Dataset,
     features: str = "embedding",
-    sample_id="pmid",
-    labels="gene2pubtator",
+    sample_id: str = "pmid",
+    labels: str = "gene2pubtator",
+    split: dict[str, float] = {"train": 0.8, "test": 0.1, "validate": 0.1},
+    seed: int = 0,
+    return_unlabeled: bool = False,
     **kwds,
-) -> DataLoader:
-    """Construct a DataLoader from a datasets.Dataset.
+) -> tuple[DataLoaderDict, jax.Array | None]:
+    """Construct a set of DataLoaders from a datasets.Dataset.
 
-    Note only the actual data (features, labels, and names) are saved. Other
-    DataLoader parameters must be set again (such as batch_size, template_size,
-    splits, and random seed) using the kwds argument.
+    Creates a DataLoader for each key in `split`.
 
     Parameters
     ----------
@@ -359,13 +457,23 @@ def from_huggingface(
         dataset.Feature type dataset.ClassLabel. This will be used for both
         label values and their symbols. In addition to "gene2pubtator",
         "gene2pubmed" is a useful option.
+    split : dict[str, float]
+        Key-value pairs of
+    seed : int, 0
+        Random seed to initialize RNG used to split labels and generate a seed
+        to pass to the DataLoader.
+    return_unlabeled : bool, default False
+        Whether to return the unlabeled samples as an array.
     **kwds :
         All other keywords are passed to the DataLoader constructor.
 
     Return
     ------
-    dataloader : DataLoader
-        The new DataLoader.
+    dataloader : dict[str, DataLoader]
+        A dictionary of DataLoaders for each key in split.
+    unlabeled_samples : jax.Array, optional
+        If return_unlabeled is True, the array of all samples that had no
+        labels is returned.
 
     """
 
@@ -385,16 +493,72 @@ def from_huggingface(
         data = np.ones((coords.shape[0],), dtype=np.bool)
         return sp.sparse.coo_array((data, coords.T), shape).tocsc()
 
-    return DataLoader(
-        jnp.asarray(dataset[features]),
-        to_sparse_labels(dataset, labels),
-        dataset[sample_id],
-        dataset.features[labels].feature.names,
+    def split_labels(
+        labels: jax.Array, split: dict[str, float], rng: np.random.Generator
+    ) -> dict[str, jax.Array]:
+        """Reshuffle the training, test, and validation sets."""
+        tol = 1e-5
+
+        assert (sum(split.values()) > (1 - tol)) and (
+            sum(split.values()) < (1 + tol)
+        )
+
+        label_mask = labels.sum(axis=0) > 0
+        n_labels = sum(label_mask)
+
+        szs = {k: int(n_labels * split[k]) for k, v in split.items()}
+        szs[list(szs.keys())[-1]] = n_labels - sum(list(szs.values())[:-1])
+
+        mask = np.zeros((labels.shape[1]))
+        mask[label_mask] = np.concat(
+            tuple(np.ones(sz) + i for i, sz in enumerate(szs.values()))
+        )
+        mask[label_mask] = rng.permutation(mask[label_mask])
+
+        return {
+            "train": mask == 1,
+            "test": mask == 2,
+            "validate": mask == 3,
+        }
+
+    # dataset = dataset.filter(
+    #     lambda examples: [yr > 2023 for yr in examples["year"] if yr],
+    #     batched=True,
+    #     batch_size=5000,
+    # )
+    rng: np.random.Generator = np.random.default_rng(seed)
+    new_seed = rng.integers(9999, size=len(split)).astype(int)
+    splabels = to_sparse_labels(dataset, labels)
+    label_masks = split_labels(splabels, split, rng)
+    feats = dataset.with_format("jax", columns=[features])[features]
+    labeled = splabels.sum(axis=1) > 0
+
+    unlabeled = None
+    if return_unlabeled:
+        unlabeled = feats[np.logical_not(labeled)]
+
+    names = dataset.features[labels].feature.names
+    feats = feats[labeled, :]
+    splabels = splabels[labeled, :]
+
+    dataloaders = DataLoaderDict(
+        {
+            k: DataLoader(
+                feats,
+                splabels[:, label_masks[k]],
+                dataset[sample_id],
+                [name for (mask, name) in zip(label_masks[k], names) if mask],
+                seed=sd,
+            )
+            for sd, k in zip(new_seed, split)
+        },
         **kwds,
     )
 
+    return (dataloaders, unlabeled)
 
-# TODO: Once the embeddings dataset is upload to huggingface, switch from
+
+# TODO: Once the embeddings dataset is uploaded to huggingface, switch from
 # datasets.load_from_disk to datasets.load_dataset and let hf handle all
 # caching,
 def load_dataset(
@@ -402,7 +566,7 @@ def load_dataset(
     data_dir: str | None = None,
     labels: str = "gene2pubtator",
     **kwds,
-):
+) -> tuple[DataLoaderDict, jax.Array | None]:
     """Load a dataset.Dataset and convert it to a DataLoader.
 
     Wrapper around `dataset.load_dataset` and `from_huggingface`. For more
@@ -427,7 +591,11 @@ def load_dataset(
 
     Returns
     -------
-    dataset : DataLoader
+    dataloader : dict[str, DataLoader]
+        A dictionary of DataLoaders for each key in split.
+    unlabeled_samples : jax.Array, optional
+        If return_unlabeled is True, the array of all samples that had no
+        labels is returned.
 
     """
     path = os.path.join(data_dir or default_data_dir("datasets"), name)

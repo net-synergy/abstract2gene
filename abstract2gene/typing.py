@@ -1,13 +1,12 @@
-__all__ = ["Fetures", "Batch", "PyTree", "Labels"]
+__all__ = ["Fetures", "Labels", "Batch", "PyTree", "Names"]
 
-from typing import Any
+from typing import Any, Sequence
 
 import jax
 import numpy as np
 
 Features = jax.Array
-# NOTE: Label type refers to a single column vector of labels.
 Labels = jax.Array
-Batch = tuple[Features, Features, Labels]
+Batch = tuple[Features, Labels]
 PyTree = dict[str, Any]
-Names = np.ndarray[Any, np.dtype[np.str_ | np.object_]]
+Names = Sequence[str]

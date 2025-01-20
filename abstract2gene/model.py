@@ -8,31 +8,31 @@ Templates are the average of many examples of abstracts tagged with a label.
 """
 
 __all__ = [
-    "ModelNoWeights",
-    "ModelSingleLayer",
-    "ModelMultiLayer",
-    "train",
-    "test",
+    "RawSimilarity",
+    "SingleLayer",
+    "MultiLayer",
+    "MLPExtras",
+    "Attention",
+    "Trainer",
 ]
 
 import os
 
 import jax
-import jax.numpy as jnp
 import numpy as np
 import optax
 import pandas as pd
 from flax import nnx
-from jax import tree_util
+from flax.metrics import tensorboard
 
-from .dataset import DataLoader
-from .typing import Batch, Features, Labels, Names, PyTree
+from .dataset import DataLoaderDict
+from .typing import Batch, Features, Labels, Names
 
 RESULT_TEMPLATE = "results/{name}_validation.tsv"
 RESULTS_TABLE = "results/model_comparison.tsv"
 
 
-class Model:
+class Model(nnx.Module):
     """Base class for abstract2gene prediction models.
 
     Models can be trained in order to predict how similar an abstract's LLM
@@ -69,10 +69,9 @@ class Model:
         self.result_file = RESULT_TEMPLATE.format(name=name)
         self.templates: Features | None = None
         self.label_names: Names | None = None
-        self.params: PyTree = {}
 
-    def __call__(self, x: Features) -> jax.Array:
-        return self.predict(x)
+    def __call__(self, x: jax.Array) -> jax.Array:
+        raise NotImplementedError
 
     @property
     def name(self) -> str:
@@ -83,20 +82,26 @@ class Model:
         self._name = value
         self.result_file = RESULT_TEMPLATE.format(name=value)
 
-    def attach_templates(self, dataset: DataLoader) -> None:
+    def attach_templates(self, templates: Features, names: Names) -> None:
         """Add the templates for the model.
 
         These are used for prediction---outside of training. During training,
         templates are created with batches by the dataset.
+
+        Note the dataset should be of class `DataLoader` not `DataLoaderDict`.
         """
-        self.templates, self.label_names = dataset.get_templates()
+        if self.templates is not None:
+            print("Templates already attached. Old templates being replaced.")
+
+        self.templates = self(templates)
+        self.label_names = names
 
     def predict(self, x: Features) -> jax.Array:
         """Calculate similarity of samples `x` to templates `template`.
 
         Parameters
         ----------
-        x : ArrayLike (numpy.ndarray, jax.ndarray)
+        x : ArrayLike
             Either a row vector of a single sample or a matrix where each row
             is a sample.
 
@@ -117,272 +122,196 @@ class Model:
                 See `model.attach_templates`."""
             )
 
-        return self._predict(x, self.templates)
+        return self.logits_fn(self(x), self.templates)
 
-    def _predict(self, x: Features, templates: Features) -> jax.Array:
-        """Variant of predict to use during training."""
-        raise NotImplementedError
+    @nnx.jit
+    def logits_fn(self, x, templates):
+        return x @ templates.T
 
-    def loss(self, x: Features, templates: Features, labels: Labels) -> float:
-        """Score the model's prediction success against known labels."""
-        raise NotImplementedError
 
-    def gradient(
-        self, x: Features, templates: Features, labels: Labels
-    ) -> PyTree:
-        """Calculate the loss function's gradient with respect to weights."""
-        raise NotImplementedError
+class MultiLabelAccuracy(nnx.metrics.Average):
+    """Accuracy metric for multilabel classification."""
 
-    def update(self, batch: Batch, learning_rate: float) -> None:
-        """Update the model's weights based on the loss gradient."""
-        tree_util.tree_map(
-            lambda p, g: p - learning_rate * g,
-            self.params,
-            self.gradient(*batch),
+    def update(self, *, predictions: jax.Array, labels: jax.Array, **_) -> None:  # type: ignore[override]
+        """In-place update this ``Metric``.
+
+        Predictions and arguments should have shape n_samples x n_labels.
+
+        Args:
+          predictions: The predictions of the model. Should be a vector of
+          bools.
+          labels: Ground truth labels.
+
+        """
+        if not all(
+            psz == lsz for psz, lsz in zip(predictions.shape, labels.shape)
+        ):
+            raise ValueError(
+                "Expected predictions and labels to be the same shape."
+            )
+
+        super().update(values=(predictions == labels).mean(axis=1))
+
+
+class Trainer:
+    def __init__(
+        self,
+        model: Model,
+        data: DataLoaderDict,
+        tx: optax.GradientTransformation,
+    ):
+        self.model = model
+        self.data = data
+        self.optimizer = nnx.Optimizer(model, tx)
+        self.metrics = nnx.MultiMetric(
+            accuracy=MultiLabelAccuracy(),
+            loss=nnx.metrics.Average("loss"),
         )
+        self.history: dict[str, list[float]] = {
+            "train_loss": [],
+            "train_accuracy": [],
+            "test_loss": [],
+            "test_accuracy": [],
+        }
 
-    def init_weights(self, data: DataLoader, learning_rate: float) -> None:
-        raise NotImplementedError
+        log_dir = "./tmp"
+        # TODO: Maybe add model name here.
+        self.writers = {
+            k: tensorboard.SummaryWriter(os.path.join(log_dir, k))
+            for k in ["train", "test"]
+        }
 
+    # @nnx.jit
+    def loss_fn(
+        self, model: Model, x: Features, templates: Features, labels: Labels
+    ) -> tuple[float, jax.Array]:
+        """Score the model's prediction success against known labels."""
+        x = model(x)
+        templates = model(templates)
 
-def train(
-    model: Model,
-    data: DataLoader,
-    max_epochs: int = 1000,
-    stop_delta: float = 1e-5,
-    learning_rate: float = 0.002,
-    reset_weights: bool = True,
-    verbose: bool = True,
-):
-    """Train weights for the model."""
+        logits = model.logits_fn(x, templates)
+        loss = optax.losses.sigmoid_binary_cross_entropy(logits, labels).mean()
 
-    def validate() -> float:
-        n = data.n_validate
-        return sum(model.loss(*batch) for batch in data.validate()) / n
+        return loss, nnx.sigmoid(logits) > 0.5
 
-    if (not model.params) or reset_weights:
-        model.init_weights(data, learning_rate)
+    # @nnx.jit
+    def train_step(self, batch: Batch) -> None:
+        @nnx.jit
+        def loss_fn(model, x, templates, y):
+            x = model(x)
+            templates = model(templates)
 
-    epoch = 0
-    window_size = 20
-    delta = np.full(window_size, np.nan)
-    last_err = validate()
-    if verbose:
-        print(f"Initial validation loss: {last_err:0.4g}")
+            logits = model.logits_fn(x, templates)
+            loss = optax.losses.sigmoid_binary_cross_entropy(logits, y).mean()
 
-    delta[0] = stop_delta + 1
-    while (epoch < max_epochs) and (abs(np.nanmean(delta)) > stop_delta):
-        train_err = 0.0
-        count = 0
-        pred_t = 0.0
-        pred_f = 0.0
-        pred_tvar = 0.0
-        pred_fvar = 0.0
-        try:
-            for batch in data.train():
-                if count < window_size:
-                    x, templates, labels = batch
-                    col = np.argmax(labels.sum(axis=0))
-                    x_t = x[labels[:, col].squeeze(), :]
-                    x_f = x[np.logical_not(labels[:, col].squeeze()), :]
-                    prediction = model._predict(x_t, templates)
-                    pred_t += prediction.mean().item()
-                    pred_tvar += prediction.var().item()
-                    prediction = model._predict(x_f, templates)
-                    pred_f += prediction.mean().item()
-                    pred_fvar += prediction.var().item()
+            return loss, nnx.sigmoid(logits) > 0.5
 
-                model.update(batch, learning_rate)
-                train_err += model.loss(*batch)
-                count += 1
-        except KeyboardInterrupt:
-            # End training gracefully on keyboard interrupt. Model will
-            # still be trained.
-            print("\nExiting training loop")
-            break
+        templates, x = self.data.split_batch(batch[0])
+        grad_fn = nnx.value_and_grad(loss_fn, has_aux=True)
+        (loss, preds), grads = grad_fn(self.model, x, templates, batch[-1])
+        self.metrics.update(loss=loss, predictions=preds, labels=batch[-1])
+        self.optimizer.update(grads)
 
-        err = validate()
-        delta[epoch % window_size] = last_err - err
+    # @nnx.jit
+    def eval_step(self, batch: Batch) -> None:
+        templates, x = self.data.split_batch(batch[0])
+        loss, preds = self.loss_fn(self.model, x, templates, batch[-1])
+        self.metrics.update(loss=loss, predictions=preds, labels=batch[-1])
 
-        if verbose:
-            print(f"Epoch: {epoch}")
-            print(f"  Training loss: {train_err / count:.4g}")
-            print(f"  Validation loss: {err:.4g}")
-            print(f"  Delta: {delta[epoch % window_size]:.4g}")
-            print(f"  Avg delta: {delta.mean():.4g}")
-            print(
-                f"  True: {pred_t / window_size:.4g} +/- "
-                + f"{np.sqrt(pred_tvar / window_size):.4g}"
-            )
-            print(
-                f"  False: {pred_f / window_size:.4g} +/- "
-                + f"{np.sqrt(pred_fvar / window_size):.4g}"
-            )
-            distance = (pred_t - pred_f) / np.sqrt((pred_tvar + pred_fvar))
-            print(f"  Distance: {distance:.4g}")
+    def write_metrics(self, stage: str, step: int):
+        for metric, value in self.metrics.compute().items():
+            self.history[f"{stage}_{metric}"].append(value)
+            self.writers[stage].scalar(metric, value, step)
 
-        last_err = err
-        epoch += 1
+        self.metrics.reset()
+        self.writers[stage].flush()
 
+    def train(
+        self,
+        max_epochs: int = 1000,
+        stop_delta: float = 1e-5,
+        verbose: bool = True,
+    ) -> dict[str, list[float]]:
+        """Train weights for the model."""
 
-def test(
-    model: Model,
-    data: DataLoader,
-    max_num_tests: int | None = None,
-    save_results: bool = True,
-):
-    """Tests how well the model differentiates labels.
+        def test_epoch():
+            for batch in self.data["test"].batch():
+                self.eval_step(batch)
 
-    For each label, compares predictions for `model.batch_size` labeled
-    samples against samples without the label. Templates are created using
-    a leave-one-out method. Results are stored as a table in
-    `model.result_file`.
+            self.write_metrics("test", epoch)
 
-    The `max_num_tests` controls how many labels to test. If None, tests
-    are test labels.
+        def train_epoch():
+            for batch in self.data["train"].batch():
+                self.train_step(batch)
 
-    """
+            self.write_metrics("train", epoch)
 
-    def _test_label(model, batch, symbol, pmids, save_results):
-        labels = batch[-1]
-        y_hat = model._predict(*batch[:-1])
-        sim_within = y_hat[labels]
-        sim_between = y_hat[np.logical_not(labels)]
+        window_size = 20
+        delta = np.full(window_size, np.nan)
+        delta[0] = stop_delta + 1
+        last_err = 0.0
+        for epoch in range(max_epochs):
+            if abs(np.nanmean(delta)) < stop_delta:
+                break
 
-        if save_results:
-            label_df = pd.DataFrame(
-                {
-                    "label": np.repeat(symbol, labels.shape[0]),
-                    "pmid": pmids,
-                    "group": np.concat(
-                        (
-                            np.asarray("within").repeat(labels.sum()),
-                            np.asarray("between").repeat(
-                                np.logical_not(labels).sum()
-                            ),
-                        )
-                    ),
-                    "similarity": np.concat((sim_within, sim_between)),
-                }
-            )
+            try:
+                train_epoch()
+                test_epoch()
+            except KeyboardInterrupt:
+                # End training gracefully on keyboard interrupt. Model will
+                # still be trained.
+                print("\nExiting training loop")
+                break
 
-            header = not os.path.exists(model.result_file)
-            label_df.to_csv(
-                model.result_file,
-                sep="\t",
-                index=False,
-                mode="a",
-                header=header,
-            )
+            err = self.history["test_loss"][-1]
+            if epoch > 0:
+                delta[epoch % window_size] = last_err - err
 
-        distance = sim_within.mean() - sim_between.mean()
-        stderr = np.concat((sim_within, sim_between)).std(ddof=1)
-        stderr /= np.sqrt(labels.shape[0] // 2)
-        return distance / stderr
+            last_err = err
 
-    if save_results and os.path.exists(model.result_file):
-        os.unlink(model.result_file)
+            if verbose:
+                train_err = self.history["train_loss"][-1]
+                train_acc = self.history["train_accuracy"][-1]
+                test_acc = self.history["test_accuracy"][-1]
 
-    max_num_tests = max_num_tests or data.n_test
-    n_tests = min(max_num_tests, data.n_test)
+                print(f"Epoch: {epoch}")
+                print(f"  Train loss: {train_err:.4g}")
+                print(f"  Test loss: {err:.4g}")
+                print(f"  Train accuracy: {train_acc:.4g}")
+                print(f"  Test accuracy: {test_acc:.4g}")
+                print(f"  Delta: {delta[epoch % window_size]:.4g}")
+                print(f"  Avg delta: {delta.mean():.4g}")
 
-    loss = 0.0
-    for batch in data.test():
-        symbol = data.batch_label_name()
-        pmids = data.batch_sample_names()
-        loss += _test_label(model, batch, symbol, pmids, save_results)
+            epoch += 1
 
-    if save_results and not os.path.exists(RESULTS_TABLE):
-        with open(RESULTS_TABLE, "w") as f:
-            f.write("name\tmean_distance\n")
+        return self.history
 
-    if save_results:
-        with open(RESULTS_TABLE, "a") as f:
-            f.write(f"{model.name}\t{loss / n_tests:0.4g}\n")
-
-    print(f"Average sample mean distance:\n  {loss / n_tests:0.4g}")
+    def validate(self):
+        pass
 
 
-class ModelNoWeights(Model):
+class RawSimilarity(Model):
     """Model without weights.
 
     Prediction is the dot product between the samples and templates.
     """
 
-    def _predict(self, x: Features, templates: Features) -> jax.Array:
-        return x @ templates.T
-
-    def loss(self, samples, templates, labels):
-        return 0.0
-
-    def init_weights(self, data, learning_rate):
-        pass
-
-    def update(self, batch: Batch, learning_rate: float | None) -> None:
-        pass
+    def __call__(self, x):
+        return x
 
 
-@jax.jit
-def _sl_predict(
-    weights: jax.Array, samples: Features, templates: Features
-) -> jax.Array:
-    return (samples @ weights) @ (weights.T @ templates.T)
+class SingleLayer(Model):
+    def __init__(self, name: str, seed: int, dims_in: int, dims_out: int):
+        super().__init__(name)
+        rngs = nnx.Rngs(seed)
+        self.linear = nnx.Linear(dims_in, dims_out, rngs=rngs)
+
+    def __call__(self, x: Features):
+        return nnx.gelu(self.linear(x))
 
 
-@jax.jit
-def _mse_loss(
-    params: PyTree,
-    samples: Features,
-    templates: Features,
-    labels: Labels,
-):
-    prediction = _sl_predict(params["w"], samples, templates)
-    return jnp.mean(optax.losses.l2_loss(prediction, labels))
-
-
-_mse_gradient = jax.grad(_mse_loss, has_aux=False)
-
-
-class ModelSingleLayer(Model):
-    def __init__(self, *args, seed: int = 0, n_dims: int = 20, **kwds):
-        super().__init__(*args, **kwds)
-        self.n_dims = n_dims
-        self._key = jax.random.PRNGKey(seed)
-
-    def _predict(self, samples, templates):
-        return _sl_predict(self.params["w"], samples, templates)
-
-    def loss(self, samples, templates, labels):
-        return _mse_loss(self.params, samples, templates, labels)
-
-    def init_weights(self, data: DataLoader, learning_rate: float) -> None:
-        self._optimizer = optax.adam(learning_rate=learning_rate)
-        self._key, key = jax.random.split(self._key)
-        self.params = {
-            "w": jax.random.normal(key, (data.n_features, self.n_dims))
-        }
-        self._state = self._optimizer.init(self.params)
-
-    def update(self, batch: Batch, learning_rate: float | None) -> None:
-        grads = _mse_gradient(self.params, *batch)
-        updates, self._state = self._optimizer.update(grads, self._state)
-        self.params = optax.apply_updates(self.params, updates)
-
-
-@jax.jit
-def _ml_predict(samples, templates):
-    return samples @ templates.T
-
-
-class ModelMultiLayer(Model, nnx.Module):
-    def __init__(
-        self,
-        *args,
-        dims: tuple[int, ...],
-        seed: int = 0,
-        dropout: tuple[float, float] = (0.2, 0.1),
-        **kwds,
-    ):
+class MultiLayer(Model, nnx.Module):
+    def __init__(self, name: str, dims: tuple[int, ...], seed: int):
         """Multi-layer perceptron for predicting labels.
 
         Note: final step is dot product between samples and templates so the
@@ -390,48 +319,23 @@ class ModelMultiLayer(Model, nnx.Module):
         of the output. The true output dimensionality is determine by the
         number of rows in templates.
         """
-        super().__init__(*args, **kwds)
-        self._rng = nnx.Rngs(seed)
+        super().__init__(name)
+        rngs = nnx.Rngs(seed)
         self.layers = [
-            nnx.Linear(dims[i], dims[i + 1], rngs=self._rng)
+            nnx.Linear(dims[i], dims[i + 1], rngs=rngs)
             for i in range(len(dims) - 1)
         ]
-        self.dropouts = [
-            nnx.Dropout(p, rngs=self._rng)
-            for p in np.linspace(*dropout, num=len(dims))
-        ]
-        self.activation = nnx.relu
 
-    def _net(self, x):
-        for dropout, layer in zip(self.dropouts, self.layers):
-            x = self.activation(dropout(layer(x)))
+    def __call__(self, x):
+        for layer in self.layers:
+            x = nnx.gelu(layer(x))
 
         return x
 
-    def _predict(self, samples, templates):
-        samples = self._net(samples)
-        samples /= jnp.linalg.norm(samples, axis=1, keepdims=True)
 
-        templates = self._net(templates)
-        templates /= jnp.linalg.norm(templates, axis=1, keepdims=True)
+class MLPExtras(Model):
+    pass
 
-        return _ml_predict(samples, templates)
 
-    def loss(self, samples, templates, labels):
-        return jnp.mean(
-            optax.losses.l2_loss(self._predict(samples, templates), labels)
-        )
-
-    def init_weights(self, data: DataLoader, learning_rate: float) -> None:
-        self._optimizer = nnx.Optimizer(
-            self, optax.adam(learning_rate=learning_rate)
-        )
-
-    @nnx.jit
-    def update(self, batch: Batch, learning_rate: float | None) -> None:
-        def loss(model):
-            y_pred = model._predict(*batch[:-1])
-            return jnp.mean((y_pred - batch[-1]) ** 2)
-
-        grads = nnx.grad(loss)(self)
-        self._optimizer.update(grads)
+class Attention(Model):
+    pass
