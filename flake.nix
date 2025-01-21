@@ -1,20 +1,62 @@
 {
-  description = "Word distributions related to gene symbols";
+  description = "Classify abstracts with gene annotations";
 
   inputs = {
     nixpkgs.url = "github:nixos/nixpkgs";
-    poetry2nix = {
-      url = "github:nix-community/poetry2nix";
+    pyproject-nix = {
+      url = "github:pyproject-nix/pyproject.nix";
       inputs.nixpkgs.follows = "nixpkgs";
     };
   };
 
-  outputs = { self, nixpkgs, poetry2nix }:
+  outputs = { self, nixpkgs, pyproject-nix }:
     let
       system = "x86_64-linux";
+
+      overlay = final: prev: {
+        python3 = prev.python3.override {
+          packageOverrides = final: prev: {
+            plotnine = (prev.buildPythonPackage rec {
+              pname = "plotnine";
+              version = "0.14.5";
+              format = "pyproject";
+
+              src = prev.fetchPypi {
+                inherit pname version;
+                sha256 = "sha256-nnWWno4Q2NdwpL420Q4HXMELiMpvzJnjatpTQ2+1ZT8=";
+              };
+
+              nativeBuildInputs = [ prev.setuptools_scm ];
+              propagatedBuildInputs = with prev; [
+                matplotlib
+                pandas
+                mizani
+                numpy
+                scipy
+                statsmodels
+              ];
+            });
+
+            synstore = (prev.buildPythonPackage rec {
+              pname = "synstore";
+              version = "0.1.3";
+              format = "pyproject";
+
+              src = prev.fetchPypi {
+                inherit pname version;
+                sha256 = "sha256-PED+Z+BlptuoQVOGvG8EICxohX+2stbXyJdwNqap32I=";
+              };
+
+              nativeBuildInputs = [ prev.poetry-core ];
+              propagatedBuildInputs = [ prev.platformdirs ];
+            });
+          };
+        };
+      };
+
       pkgs = import nixpkgs {
         inherit system;
-        overlays = [ poetry2nix.overlays.default ];
+        overlays = [ overlay ];
         config.cudaSupport = true;
         config.allowUnfreePredicate = pkg:
           builtins.elem (pkgs.lib.getName pkg) [
@@ -46,65 +88,13 @@
           ];
       };
 
-      synstore = (pkgs.python3Packages.buildPythonPackage rec {
-        pname = "synstore";
-        version = "devel";
-        format = "pyproject";
+      project = pyproject-nix.lib.project.loadPyproject { projectRoot = ./.; };
+      python = pkgs.python3;
 
-        nativeBuildInputs = [ pkgs.python3Packages.poetry-core ];
-        buildInputs = [ pkgs.python3Packages.platformdirs ];
-        src = pkgs.fetchFromGitHub {
-          owner = "net-synergy";
-          repo = "synstore";
-          rev = "devel";
-          sha256 = "sha256-uOzkVvVb+dkmqnLEYUeUlfaBlJbNobdKITTViT/Ecvc=";
-        };
-        # src = pkgs.fetchPypi {
-        #   inherit pname version;
-        #   sha256 = "sha256-8O+8a9VzCloxWJGMkoDHDnKy4aCP6srjDkHcPf45eM8=";
-        # };
+      a2gEnv = python.withPackages (project.renderers.withPackages {
+        inherit python;
+        groups = [ "dev" ];
       });
-
-      # a2gEnv = pkgs.poetry2nix.mkPoetryEnv {
-      #   projectDir = ./.;
-      #   editablePackageSources = { abstract2gene = ./.; };
-      #   preferWheels = true;
-      # overrides = pkgs.poetry2nix.defaultPoetryOverrides.extend
-      #   (final: prev: {
-      #     jax = prev.jax.overridePythonAttrs (old: { cudaSupport = true; });
-      #     jaxlib =
-      #       prev.jaxlib.overridePythonAttrs (old: { cudaSupport = true; });
-      #   });
-      # };
-
-      a2gEnv = (pkgs.python3.withPackages (ps:
-        with ps; [
-          ipython
-          black
-          isort
-          python-lsp-server
-          pydocstyle
-          pylsp-mypy
-          python-lsp-ruff
-          ipdb
-
-          pandas
-          scikit-learn
-
-          pytorch
-          jax
-          flax
-          optax
-          numpy
-          tqdm
-          transformers
-          datasets
-          peft
-          scipy
-          pyarrow
-
-          synstore
-        ]));
 
       REnv = (pkgs.rWrapper.override {
         packages = with pkgs.rPackages; [
@@ -115,7 +105,14 @@
         ];
       });
     in {
-      devShells.${system}.default =
-        pkgs.mkShell { packages = [ a2gEnv pkgs.poetry REnv ]; };
+      devShells.${system}.default = pkgs.mkShell {
+        packages = [ REnv a2gEnv ];
+
+        env = {
+          UV_NO_SYNC = "1";
+          UV_PYTHON_DOWNLOADS = "never";
+          UV_PYTHON = python.interpreter;
+        };
+      };
     };
 }

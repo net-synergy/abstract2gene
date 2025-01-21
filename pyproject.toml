@@ -1,45 +1,43 @@
-[tool.poetry]
+[project]
 name = "abstract2gene"
 version = "0.1.0"
 description = "Classify abstracts with gene annotations"
 license = "MIT"
 repository = "https://github.com/net-synergy/abstract2gene"
-authors = ["David Connell <davidconnell12@gmail.com>"]
+authors = [{name = "David Connell", email = "davidconnell12@gmail.com"}]
 packages = [{ include = "abstract2gene" }]
+requires-python = ">=3.10"
 
-[tool.poetry.dependencies]
-python = "^3.10,<3.13"
-pandas = "^2.0"
-synstore = {version = "^0.1", source = "testpypi", allow-prereleases = true}
-numpy = "^2.0.0"
-tqdm = "^4.67.1"
-transformers = "^4.47.1"
-scipy = "^1.14.1"
-datasets = "^3.2.0"
-jax = {version = "^0.4.38", extras = ["cuda12"]}
-optax = "^0.2.4"
-flax = "^0.10.2"
-torch = "^2.5.1"
+dependencies = [
+    "datasets>=3.2.0",
+    "flax>=0.10.2",
+    "jax[cuda12]>=0.5.0",
+    "keras>=2.11.0",
+    "numpy>=2.2.1",
+    "optax>=0.2.4",
+    "pandas>=2.2.3",
+    "peft>=0.14.0",
+    "plotnine>=0.14.5",
+    "scikit-learn>=1.6.1",
+    "scipy>=1.15.1",
+    "synstore>=0.1.3",
+    "tensorflow>=2.11.1",
+    "torch>=2.5.1",
+    "tqdm>=4.67.1",
+    "transformers>=4.48.0",
+]
 
-[tool.poetry.group.dev.dependencies]
-ipython = "^8.16.1"
-black = "^24.0"
-isort = "^5.12.0"
-python-lsp-server = "^1.8.0"
-pydocstyle = "^6.3.0"
-pylsp-mypy = "^0.6.7"
-python-lsp-ruff = "^2.0.0"
-ipdb = "^0.13.13"
-
-[[tool.poetry.source]]
-name = "PyPI"
-priority = "primary"
-
-
-[[tool.poetry.source]]
-name = "testpypi"
-url = "https://test.pypi.org/simple/"
-priority = "supplemental"
+[dependency-groups]
+dev = [
+    "black>=24.10.0",
+    "ipdb>=0.13.13",
+    "ipython>=8.31.0",
+    "isort>=5.13.2",
+    "pydocstyle>=6.3.0",
+    "pylsp-mypy>=0.6.9",
+    "python-lsp-ruff>=2.2.2",
+    "python-lsp-server>=1.12.0",
+]
 
 [tool.black]
 line-length = 79
@@ -64,5 +62,5 @@ ignore = ["E203"]
 select = ["A", "C", "D", "E", "F", "N", "RET", "SIM"]
 
 [build-system]
-requires = ["poetry-core"]
-build-backend = "poetry.core.masonry.api"
+requires = ["hatchling"]
+build-backend = "hatchling.build"
