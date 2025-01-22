@@ -45,12 +45,19 @@ for d in range(1, 20, 2):
     )
     trainer = a2g.model.Trainer(model, data, tx)
     results = trainer.train()
-    trainer.validate()
+    trainer.test()
 
-data.batch_size = 64
-dims = (data.n_features, 256)
+data, _ = a2g.dataset.load_dataset(
+    DATASET,
+    seed=42,
+    batch_size=256,
+    labels_per_batch=8,
+    template_size=16,
+)
+dims = (data.n_features, 256, 256)
 model = a2g.model.MultiLayer(name="multi", seed=20, dims=dims)
-tx = optax.adamw(1e-4, 0.9)
+tx = optax.adam(1e-4)
 trainer = a2g.model.Trainer(model, data, tx)
 results = trainer.train()
-# trainer.validate()
+df = trainer.test()
+trainer.plot(df)

@@ -95,18 +95,9 @@
         inherit python;
         groups = [ "dev" ];
       });
-
-      REnv = (pkgs.rWrapper.override {
-        packages = with pkgs.rPackages; [
-          styler
-          lintr
-
-          tidyverse
-        ];
-      });
     in {
       devShells.${system}.default = pkgs.mkShell {
-        packages = [ REnv a2gEnv ];
+        packages = [ a2gEnv ];
 
         env = {
           UV_NO_SYNC = "1";

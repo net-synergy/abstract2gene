@@ -3,10 +3,11 @@ __all__ = ["Trainer"]
 import os
 from datetime import datetime
 
+import jax.numpy as jnp
 import numpy as np
 import optax
+import pandas as pd
 from flax import nnx
-from flax.metrics import tensorboard
 
 from abstract2gene.dataset import DataLoaderDict
 from abstract2gene.typing import Batch, Samples
@@ -22,6 +23,10 @@ class Trainer:
         data: DataLoaderDict,
         tx: optax.GradientTransformation,
     ):
+        # Tends to give a warning about devices so don't want it being loaded
+        # just because abstract2gene is imported.
+        from flax.metrics import tensorboard
+
         self.model = model
         self.data = data
         self.optimizer = nnx.Optimizer(model, tx)
@@ -132,5 +137,146 @@ class Trainer:
 
         return self.history
 
-    def test(self):
-        pass
+    def test(
+        self, batch_size: int | None = None, seed: int = 0
+    ) -> pd.DataFrame:
+
+        batch_size_i = self.data.batch_size
+        labels_per_batch_i = self.data.labels_per_batch
+        self.data.update_params(batch_size=batch_size, labels_per_batch=-1)
+        dataset = self.data["test"]
+
+        if dataset.is_training:
+            dataset.eval()
+
+        templates = self.data.fold_templates(
+            self.model(dataset.templates)
+        ).mean(axis=1)
+
+        batch_labels = []
+        batch_regression = []
+        for batch in dataset.batch():
+            batch_labels.append(batch[-1])
+            batch_regression.append(
+                self.model.prediction(self.model(batch[0]), templates)
+            )
+
+        labels = jnp.concat(batch_labels, axis=0)
+        regression = jnp.concat(batch_regression, axis=0)
+
+        preds = regression > 0.5
+
+        tp = jnp.logical_and(preds, labels).sum()
+        tn = jnp.logical_and(
+            jnp.logical_not(preds), np.logical_not(labels)
+        ).sum()
+        fp = jnp.logical_and(preds, np.logical_not(labels)).sum()
+        fn = jnp.logical_and(np.logical_not(preds), labels).sum()
+
+        print(f"accuracy: {(tp + tn) / preds.size}")
+        print(f"sensitivity: {tp / (tp + fp)}")
+        print(f"specificity: {tn / (tn + fn)}")
+
+        n_labels = 20
+        n_samples = 30
+        label_mask = labels.sum(axis=0) > n_samples
+        labels = labels[:, label_mask] == 1  # Convert from float to bool
+        regression = regression[:, label_mask]
+        label_names = [
+            name for mask, name in zip(label_mask, dataset.label_names) if mask
+        ]
+
+        rng = np.random.default_rng(seed=seed)
+        selected = rng.choice(labels.shape[1], n_labels)
+
+        scores = np.zeros((2 * n_labels * n_samples,))
+        tags = np.tile(
+            np.concat(
+                (
+                    np.asarray(["within"]).repeat(n_samples),
+                    np.asarray(["between"]).repeat(n_samples),
+                )
+            ),
+            n_labels,
+        )
+
+        symbols = (
+            np.asarray([label_names[idx] for idx in selected])
+            .reshape((-1, 1))
+            .repeat(2 * n_samples)
+            .reshape((-1))
+        )
+
+        last = 0
+        for label in selected:
+            within = regression[labels[:, label], label]
+            between = regression[jnp.logical_not(labels[:, label]), label]
+            scores[last : (last + n_samples)] = np.sort(within)[:n_samples]
+            last += n_samples
+            scores[last : (last + n_samples)] = np.sort(between)[:n_samples]
+            last += n_samples
+
+        self.data.update_params(
+            batch_size=batch_size_i, labels_per_batch=labels_per_batch_i
+        )
+        return pd.DataFrame({"score": scores, "tag": tags, "symbol": symbols})
+
+    def plot(self, df: pd.DataFrame):
+        from plotnine import (
+            aes,
+            element_text,
+            geom_errorbar,
+            geom_point,
+            ggplot,
+            ggtitle,
+            labs,
+            position_dodge,
+            position_jitterdodge,
+            theme,
+        )
+
+        def stderr(x):
+            return np.std(x) / np.sqrt(x.shape[0])
+
+        metrics = df.groupby(["tag", "symbol"], as_index=False)["score"].agg(
+            ["mean", "std", stderr]
+        )
+
+        jitter = position_jitterdodge(
+            jitter_width=0.2, dodge_width=0.8, random_state=0
+        )
+        dodge = position_dodge(width=0.8)
+        p = (
+            ggplot(df, aes(x="symbol", color="tag"))
+            + geom_point(aes(y="score"), position=jitter, size=1, alpha=0.4)
+            + geom_errorbar(
+                aes(
+                    y="mean",
+                    ymin="mean - (1.95 * std)",
+                    ymax="mean + (1.95 * std)",
+                    fill="tag",
+                ),
+                data=metrics,
+                color="black",
+                position=dodge,
+                width=0.5,
+                size=0.3,
+            )
+            + geom_errorbar(
+                aes(
+                    y="mean",
+                    ymin="mean - (1.95 * stderr)",
+                    ymax="mean + (1.95 * stderr)",
+                    fill="tag",
+                ),
+                data=metrics,
+                color="black",
+                position=dodge,
+                width=0.8,
+                size=1,
+            )
+            + labs(y="Similarity", x="Gene")
+            + ggtitle("Abstract embedding similarity")
+            + theme(axis_text_x=element_text(angle=20))
+        )
+        p.show()
