@@ -25,6 +25,8 @@ class Trainer:
         self.model = model
         self.data = data
         self.optimizer = nnx.Optimizer(model, tx)
+        # Define here so we can resume training.
+        self.epoch = 0
         self.metrics = nnx.MultiMetric(
             accuracy=MultiLabelAccuracy(),
             loss=nnx.metrics.Average("loss"),
@@ -44,7 +46,7 @@ class Trainer:
         }
 
     def _compute_templates(self, templates: Samples) -> Samples:
-        return self.model(templates).mean(axis=1)
+        return self.data.fold_templates(self.model(templates)).mean(axis=1)
 
     def train_step(self, batch: Batch) -> None:
         templates, x = self.data.split_batch(batch[0])
@@ -87,11 +89,15 @@ class Trainer:
 
             self.write_metrics("train", epoch)
 
+        self.data["train"].train()
+        self.data["validate"].train()
+
         window_size = 20
         delta = np.full(window_size, np.nan)
         delta[0] = stop_delta + 1
         last_err = 0.0
-        for epoch in range(max_epochs):
+        start_epoch = self.epoch
+        for epoch in range(start_epoch, max_epochs + start_epoch):
             if abs(np.nanmean(delta)) < stop_delta:
                 break
 
@@ -104,8 +110,9 @@ class Trainer:
                 print("\nExiting training loop")
                 break
 
+            self.epoch += 1
             err = self.history["test_loss"][-1]
-            if epoch > 0:
+            if epoch > start_epoch:
                 delta[epoch % window_size] = last_err - err
 
             last_err = err
@@ -122,8 +129,6 @@ class Trainer:
                 print(f"  Test accuracy: {test_acc:.4g}")
                 print(f"  Delta: {delta[epoch % window_size]:.4g}")
                 print(f"  Avg delta: {delta.mean():.4g}")
-
-            epoch += 1
 
         return self.history
 

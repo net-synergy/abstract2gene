@@ -112,6 +112,7 @@
           UV_NO_SYNC = "1";
           UV_PYTHON_DOWNLOADS = "never";
           UV_PYTHON = python.interpreter;
+          PYTHONPATH = ".";
         };
       };
     };

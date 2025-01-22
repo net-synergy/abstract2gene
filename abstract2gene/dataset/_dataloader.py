@@ -11,7 +11,7 @@ __all__ = [
 
 import os
 from collections import UserDict
-from typing import Any, Iterable, TypeAlias
+from typing import Iterable, Sequence, TypeAlias
 
 import datasets
 import jax
@@ -59,6 +59,7 @@ class DataLoaderDict(UserDict):
         self._batch_size = batch_size
         self._template_size = template_size
         self.labels_per_batch = labels_per_batch
+        self.update_params()
         self.n_features = mapping[list(mapping.keys())[0]].n_features
         self.n_samples = mapping[list(mapping.keys())[0]].n_samples
 
@@ -69,7 +70,7 @@ class DataLoaderDict(UserDict):
     @batch_size.setter
     def batch_size(self, bs: int):
         self._batch_size = bs
-        self._update_params()
+        self.update_params()
 
     @property
     def template_size(self) -> int:
@@ -78,7 +79,7 @@ class DataLoaderDict(UserDict):
     @template_size.setter
     def template_size(self, ts: int):
         self._template_size = ts
-        self._update_params()
+        self.update_params()
 
     @property
     def labels_per_batch(self) -> int:
@@ -87,7 +88,7 @@ class DataLoaderDict(UserDict):
     @labels_per_batch.setter
     def labels_per_batch(self, n: int):
         self._labels_per_batch = n
-        self._update_params()
+        self.update_params()
 
     def __repr__(self) -> str:
         data = (self.batch_size, self.template_size, self.labels_per_batch)
@@ -101,22 +102,28 @@ class DataLoaderDict(UserDict):
         out += "\n  }"
         return out
 
-    def __getitem__(self, key):
-        if isinstance(key, str):
-            return super().__getitem__(key)
+    def __getitem__(self, key) -> DataLoader:
+        return super().__getitem__(key)
 
+    def select(self, indices: Sequence[int]) -> DataLoaderDict:
         return DataLoaderDict(
-            {k: v[key] for k, v in self.data.items()},
+            {k: v[indices] for k, v in self.data.items()},
             batch_size=self.batch_size,
             template_size=self.template_size,
             labels_per_batch=self.labels_per_batch,
         )
 
-    def _update_params(self):
+    def update_params(
+        self,
+        batch_size: int | None = None,
+        template_size: int | None = None,
+        labels_per_batch: int | None = None,
+    ):
+        batch_size = batch_size or self.batch_size
+        template_size = template_size or self.template_size
+        labels_per_batch = labels_per_batch or self.labels_per_batch
         {
-            dl._update_params(
-                self.batch_size, self.template_size, self.labels_per_batch
-            )
+            dl._update_params(batch_size, template_size, labels_per_batch)
             for dl in self.data.values()
         }
 
@@ -124,14 +131,16 @@ class DataLoaderDict(UserDict):
         for dl in self.data.values():
             dl.reset_rng()
 
-    def split_batch(self, batch: Samples) -> tuple[jax.Array, Samples]:
+    def split_batch(self, batch: Samples) -> tuple[Samples, Samples]:
         """Split the samples of a batch into templates and samples.
 
         The first `labels_per_batch * template_size` columns of a batch's
         samples are the templates. This splits the batch's samples into the
         templates and the actual training or testing samples. Templates are
-        returned as a 3d Array with dimensions `labels_per_batch` x
-        `template_size` x `n_features`.
+        returned as an array of (labels_per_batch * template_size) x n_features
+
+        See fold_templates to convert to a 3d array of labels x template_size x
+        features.
 
         Returns
         -------
@@ -143,14 +152,20 @@ class DataLoaderDict(UserDict):
         """
         # Since self.labels_per_batch may be -1 (for all labels) can't use the
         # variable so calculate n labels instead.
-
         n_labels = (batch.shape[0] - self.batch_size) // self.template_size
         n_temp_rows = n_labels * self.template_size
-        templates = batch[:n_temp_rows, :].reshape(
-            (n_labels, self.template_size, -1)
-        )
+        templates = batch[:n_temp_rows, :]
         samples = batch[n_temp_rows:, :]
         return (templates, samples)
+
+    def fold_templates(self, templates: Samples) -> Samples:
+        """Fold templates into a 3d array.
+
+        Returned templates are n_labels x template_size x features. Reduce over
+        axis 1 to get a single template per label.
+        """
+        n_labels = templates.shape[0] // self.template_size
+        return templates.reshape((n_labels, self.template_size, -1))
 
 
 class DataLoader:
@@ -193,18 +208,20 @@ class DataLoader:
             The seed for the random number generator.
 
         """
-        self.samples = samples
-        self.sample_names = sample_names
-        self.labels = labels
-        self.label_names = label_names
+        self._is_training = True
+
+        self._samples = samples
+        self._sample_names = sample_names
+        self._labels = labels
+        self._label_names = label_names
+        self._template_mask: np.ndarray = np.asarray([])
 
         self._seed = seed
         self._rng: np.random.Generator = np.random.default_rng(seed)
-        self._sample_names: list[str] = []
-        self._label_names: list[str] = []
+        self._batch_sample_names: list[str] = []
+        self._batch_label_names: list[str] = []
 
-        self._label_idx: np.ndarray[Any, np.dtype[np.bool]] = np.asarray([])
-        self._templates_dropped = False
+        self._label_idx: np.ndarray = np.asarray([])
 
         self._bs = 0
         self._ts = 0
@@ -214,7 +231,7 @@ class DataLoader:
         self, batch_size: int, template_size: int, labels_per_batch: int
     ) -> None:
         self._bs = batch_size
-        self._ts = template_size if not self._templates_dropped else 0
+        self._ts = template_size
         self._labels_per_batch = labels_per_batch
         self._all_labels = labels_per_batch <= 0
 
@@ -225,12 +242,61 @@ class DataLoader:
                 self.batch_size // self.labels_per_batch
             ) + self.template_size
 
-        self._label_idx = np.arange(self.labels.shape[1])[
-            self.labels.sum(axis=0) > min_occurance
+        self._label_idx = np.arange(self._labels.shape[1])[
+            self._labels.sum(axis=0) > min_occurance
         ]
 
         if self._all_labels:
             self._labels_per_batch = self.n_labels
+
+        # If template size or labels per batch change, this will change the
+        # shape of the templates so they need to be recalculated.
+        if not self.is_training:
+            self.eval()
+
+    @property
+    def is_training(self) -> bool:
+        """Whether the dataset is in training mode or eval mode."""
+        return self._is_training
+
+    @property
+    def samples(self):
+        if self.is_training:
+            return self._samples
+
+        return self._samples[self._sample_mask, :]
+
+    @property
+    def sample_names(self):
+        if self.is_training:
+            return self._sample_names
+
+        return [
+            name
+            for mask, name in zip(self._sample_mask, self._sample_names)
+            if mask
+        ]
+
+    @property
+    def templates(self) -> Samples:
+        if not self.is_training:
+            # Most not be none if in eval mode.
+            return self._samples[self._template_idx, :]
+
+        raise RuntimeError("Dataset not in evaluation mode.")
+
+    @property
+    def labels(self) -> InLabels:
+        if self.is_training:
+            labels = self._labels
+        else:
+            labels = self._labels[self._sample_mask, :]
+
+        return labels[:, self._label_idx]
+
+    @property
+    def label_names(self) -> Names:
+        return [self._label_names[i] for i in self._label_idx]
 
     @property
     def batch_size(self) -> int:
@@ -292,15 +358,22 @@ class DataLoader:
         return self.samples.shape[0]
 
     def __repr__(self) -> str:
-        data = (self.n_samples, self.n_features, self.n_labels)
-        return "[samples: {}, features: {}, labels: {}]".format(*data)
+        data = (
+            self.n_samples,
+            self.n_features,
+            self.n_labels,
+            "train" if self.is_training else "eval",
+        )
+        return "[samples: {}, features: {}, labels: {}, mode: {}]".format(
+            *data
+        )
 
     def __getitem__(self, key) -> DataLoader:
         new = DataLoader(
             self.samples[key, :],
-            self.labels[key, :],
+            self._labels[key, :],
             self.sample_names[key],
-            self.label_names,
+            self._label_names,
             self._seed,
         )
         new._update_params(self._bs, self._ts, self._labels_per_batch)
@@ -308,11 +381,11 @@ class DataLoader:
 
     def batch_label_name(self) -> Names:
         """Return the current batch's label name."""
-        return self._label_names
+        return self._batch_label_names
 
     def batch_sample_names(self) -> Names:
         """Return the names for the batch's samples."""
-        return self._sample_names
+        return self._batch_sample_names
 
     def batch(self) -> Iterable[Batch]:
         """Generate batches of samples to train on."""
@@ -321,16 +394,22 @@ class DataLoader:
             label_pool.shape[0] // self.labels_per_batch
         )
         label_pool = label_pool[:cut].reshape((-1, self.labels_per_batch))
+        if self.is_training:
+            labels = self._labels
+        else:
+            labels = self._labels[self._sample_mask, :]
         for batch_labels in label_pool:
-            self._label_names = [self.label_names[idx] for idx in batch_labels]
-            for batch in self._split_labels(self.labels[:, batch_labels]):
+            self._batch_label_names = [
+                self._label_names[idx] for idx in batch_labels
+            ]
+            for batch in self._split_labels(labels[:, batch_labels]):
                 yield batch
 
     def _split_labels(
         self,
         labels: sp.sparse.sparray,
     ) -> Iterable[Batch]:
-        ts = self.template_size
+        ts = self.template_size if self.is_training else 0
         bs = self.batch_size
 
         label_samples = [
@@ -342,7 +421,7 @@ class DataLoader:
             np.concat(tuple(samps[:ts] for samps in label_samples)), :
         ]
 
-        rows = np.arange(self.labels.shape[0])
+        rows = np.arange(labels.shape[0])
         others_mask = labels.sum(axis=1) == 0
         samples = [
             self._rng.permutation(rows[others_mask]),
@@ -351,7 +430,9 @@ class DataLoader:
             ),
         ]
 
-        percent_true = 0.8
+        # If we're using all labels, don't try to find examples without one of
+        # the selected labels.
+        percent_true = 0.8 if not self._all_labels else 1
         n_draw = [0, max(int(bs * percent_true), 1)]
         n_draw[False] = bs - n_draw[True]
 
@@ -366,7 +447,7 @@ class DataLoader:
                 pool[p : p + n] for pool, p, n in zip(samples, ptr, n_draw)
             ]
             ptr = [p + n for p, n in zip(ptr, n_draw)]
-            self._sample_names = [
+            self._batch_sample_names = [
                 self.sample_names[draw] for draw in np.concat(draws)
             ]
 
@@ -380,52 +461,46 @@ class DataLoader:
                 jnp.concat(tuple(labels[draw, :].todense() for draw in draws)),
             )
 
-    def get_templates(self) -> Samples:
-        """Return a matrix of templates created from dataset.
+    def eval(self):
+        """Set the datasets mode to eval.
 
-        Randomly pulls `self.template_size` samples for each label, averages
-        them together, and returns the templates.
+        In eval mode, the dataset splits out a preselected set of samples for
+        each template and places them in the templates parameter.
 
-        *This is a destructive method*. The templates samples are dropped from
-        the dataset and the dataset's `template_size` is reduced to 0.
+        The template samples are removed from the samples parameter and `batch`
+        will not return templates along with samples.
 
-        Names for the template labels can be found with `self.label_names`.
+        Use `DataLoader.train` to reverse this process.
+        Use `DataLoader.is_training` to determine the current mode.
+
         """
         ts = self.template_size
-        frequent_labels = self.labels.sum(axis=0) > ts
 
-        self.labels = self.labels[:, frequent_labels]
-        self.label_names = self.label_names[frequent_labels]
-        self.template_size = 0
-        self._templates_dropped = True
+        labels = self._labels[:, self._label_idx]
+        n_samples = labels.sum(axis=0)
+        training_mask = labels
+        ones = np.ones((ts,), dtype=np.bool)
+        for idx in range(training_mask.shape[1]):
+            zeros = np.zeros((n_samples[idx] - ts,), dtype=np.bool)
+            mask = self._rng.permutation(np.concat((ones, zeros)))
+            labeled = labels[:, [idx]].toarray().squeeze()
+            training_mask[labeled, idx] = mask
 
-        idx = self._rng.permuted(
-            self.labels
-            * (np.arange(self.labels.shape[0]) + 1).reshape((-1, 1)),
-            axis=0,
+        samples = np.arange(labels.shape[0])
+        self._template_idx = np.fromiter(
+            (
+                idx
+                for col in range(training_mask.shape[1])
+                for idx in samples[training_mask[:, [col]].toarray().squeeze()]
+            ),
+            dtype=np.dtype(int),
+            count=(ts * training_mask.shape[1]),
         )
-        label_samples = [
-            idx[idx[:, i] > 0, i] - 1 for i in range(idx.shape[1])
-        ]
-        template_samples = [samps[:ts] for samps in label_samples]
-        remaining_samples = np.unique(
-            np.concat(tuple(samps[ts:] for samps in label_samples))
-        )
+        self._sample_mask = np.logical_not(training_mask.sum(axis=1))
+        self._is_training = False
 
-        dtype = np.dtype((self.samples.dtype, (ts, self.n_features)))
-        templates = jnp.asarray(
-            np.fromiter(
-                (
-                    self.samples[samps, :].mean(axis=0)
-                    for samps in template_samples
-                ),
-                count=self.labels.shape[1],
-                dtype=dtype,
-            )
-        )
-        self.samples = self.samples[remaining_samples, :]
-
-        return templates
+    def train(self):
+        self._is_training = True
 
 
 def from_huggingface(
