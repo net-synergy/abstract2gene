@@ -2,18 +2,21 @@
 
 __all__ = ["bioc2dataset"]
 
+import concurrent.futures
 import contextlib
+import dataclasses
+import functools
 import os
 import tarfile
 import xml.etree.ElementTree as ET
-from typing import Any, Callable, Iterable, Sequence
+from typing import Any, Iterable
 
 import datasets
+import jax
 import numpy as np
 import pandas as pd
-import torch
+from numpy.typing import ArrayLike
 from tqdm import tqdm
-from transformers import AutoModel, AutoTokenizer
 
 from abstract2gene.data import BiocDownloader, PubmedDownloader
 
@@ -22,10 +25,9 @@ def bioc2dataset(
     archives: Iterable[int],
     n_files: int = -1,
     ann_type="Gene",
-    batch_size: int = 32,
-    max_tokens: int = 512,
+    batch_size: int = 1000,
     max_cpu: int = 1,
-    max_gpu: int = 1,
+    mask_token: str = "[MASK]",
     cache_dir: str | None = None,
 ) -> datasets.Dataset:
     """Create a dataset from Pubtator's BioC archive files.
@@ -55,17 +57,13 @@ def bioc2dataset(
         passages are used not those from titles are full text. Annotations for
         the selected annotation type are stripped from the abstracts before
         embedding.
-    batch_size : int, default 32
-        Batch size used for embedding. Larger batch sizes may result in faster
-        processing but can exhaust memory.
-    max_tokens : int, default 512
-        The number of tokens the tokenizer will return. The tokenizer creates
-        arrays of tokens with exactly this many tokens, truncated longer
-        abstracts and padding smaller abstracts. This allows the model to run
-        on multiple abstracts at once. Larger values take longer to process but
-        smaller values risk dropping information.
-    max_cpu, max_gpu : int, default 1
-        How many process to run in parallel for CPU and GPU.
+    batch_size : int, 1000
+        Batch size used for dataset map functions.
+    max_cpu : int, default 1
+        How many process to run in parallel for CPU.
+    mask_token : str, default "[MASK]"
+        String to mask words with with. Should be specific to the tokenizer
+        being used.
     cache_dir : Optional str
         Where to cache and retrieve BioC archives locally. Defaults to
         `abstract2gene.storage.default_cache_dir`. A different cache can also
@@ -74,236 +72,208 @@ def bioc2dataset(
     Returns
     -------
     dataset : datasets.Dataset
-        A dataset containing the abstract embeddings for each publication and a
+        A dataset containing the masked abstract for each publication and a
         list of labels.
 
     """
-    if not torch.cuda.is_available():
-        print("No GPU found, using CPU only.")
-        max_gpu = max_cpu
-    elif torch.cuda.device_count() < max_gpu:
-        print("Max GPU cannot be greater than available GPUs, reducing.")
-        max_gpu = torch.cuda.device_count()
 
-    parser = _BiocParser(
-        archives,
-        n_files,
-        ann_type,
-        batch_size,
-        max_tokens,
-        max_cpu,
-        max_gpu,
-        cache_dir,
-    )
-    return parser.parse()
-
-
-class _BiocParser:
-    def __init__(
-        self,
-        archives: Iterable[int],
-        n_files: int,
-        ann_type: str,
-        batch_size: int,
-        max_tokens: int,
-        max_cpu: int,
-        max_gpu: int,
-        cache_dir: str | None,
-    ):
-        self.cache_dir = cache_dir
-        self.archives, self.iterfiles = self._get_archives(archives, n_files)
-        self.ann_type = ann_type
-        self.batch_size = batch_size
-        self.max_tokens = max_tokens
-        self.max_cpu = max_cpu
-        self.max_gpu = max_gpu
-
-        model_id = "allenai/specter"
-        self.tokenizer = AutoTokenizer.from_pretrained(model_id)
-        self.mask_token = self.tokenizer.special_tokens_map["mask_token"]
-        self.model = AutoModel.from_pretrained(model_id).eval()
-
-        self._ann_ids: list[int] = []
-        self._ann_symbols: list[str] = []
-
-    def _get_archives(
-        self, file_numbers: Iterable[int], n_files: int
-    ) -> tuple[list[str], Callable[[tarfile.TarFile], Sequence[str]]]:
-        """Find the local path to the BioC archives."""
-        downloader = BiocDownloader(cache_dir=self.cache_dir)
-        downloader.file_numbers = file_numbers
-        archives = downloader.download()
-
-        def iterfiles(tar: tarfile.TarFile) -> Sequence[str]:
-            if n_files < 0:
-                return tar.getnames()
-
-            return tar.getnames()[:n_files]
-
-        return (archives, iterfiles)
-
-    def _read_pubmed_data(self):
+    def read_pubmed_data() -> tuple[pd.DataFrame, pd.DataFrame]:
         # TODO: Assumes genes even if another annotation type is requested.
         pubmed_downloader = PubmedDownloader()
-        pubmed_downloader.files = ["gene2pubmed.gz"]
-        return pd.read_table(
-            pubmed_downloader.download()[0],
+        gene2pubmed, gene_info = pubmed_downloader.download()
+        links = pd.read_table(
+            gene2pubmed,
             header=0,
             names=["TaxID", "GeneID", "PMID"],
             usecols=["PMID", "GeneID"],
-            memory_map=True,
         ).sort_values("PMID")
 
-    def _attach_pubmed_genes(
-        self, examples: dict[str, list[Any]]
+        info = pd.read_table(
+            gene_info, usecols=["GeneID", "Symbol"]
+        ).sort_values("GeneID")
+
+        return (links, info)
+
+    def attach_pubmed_genes(
+        examples: dict[str, list[Any]],
     ) -> dict[str, list[Any]]:
-        def get_genes(pmid):
-            table = self._pubmed_edges
-            start = np.searchsorted(table["PMID"], pmid)
+        def get_genes(pmid: int) -> list[int]:
+            start = np.searchsorted(pubmed_edges["PMID"], pmid)
             end = start
-            while (end < table.shape[0]) and (table["PMID"].iloc[end] == pmid):
+            while (end < pubmed_edges.shape[0]) and (
+                pubmed_edges["PMID"].iloc[end] == pmid
+            ):
                 end += 1
 
-            return [table["GeneID"].iloc[idx] for idx in range(start, end)]
+            return list(pubmed_edges["GeneID"].iloc[start:end])
 
-        def sorted_in(arr, v) -> bool:
-            idx = np.searchsorted(arr, v)
-            return idx < len(arr) and arr[idx] == v
+        return {"gene2pubmed": [get_genes(pmid) for pmid in examples["pmid"]]}
 
-        examples["gene2pubmed"] = [
-            get_genes(pmid) for pmid in examples["pmid"]
+    def deduplicate_symbols(symbol_table: pd.DataFrame) -> list[str]:
+        dups, counts = np.unique(symbol_table["Symbol"], return_counts=True)
+        dups = dups[counts > 1]
+        dup_counter = dict(zip(dups, np.zeros((dups.shape[0],), dtype=int)))
+        dup_mask = np.isin(symbol_table["Symbol"], dups)
+        symbols = symbol_table["Symbol"].array.tolist()
+        for i in np.arange(dup_mask.shape[0])[dup_mask]:
+            dup_counter[symbols[i]] += 1
+            symbols[i] = f"{symbols[i]}_{dup_counter[symbols[i]]}"
+
+        return symbols
+
+    def repack_labels(examples: dict[str, list[Any]]) -> dict[str, list[Any]]:
+        """Shrink label IDs to a sequential range."""
+        return {
+            k: [
+                [id2idx[gene_id] for gene_id in pub_genes]
+                for pub_genes in examples[k]
+            ]
+            for k in ("gene2pubmed", "gene2pubtator")
+        }
+
+    tar_paths = _get_archives(archives, cache_dir)
+    args = ParsingArgs(ann_type, mask_token, n_files)
+
+    print(f"Reading {len(tar_paths)} archives...")
+    dataset = datasets.Dataset.from_list(
+        _grab_publication_data(tar_paths, args, max_cpu)
+    )
+
+    # If first batch of pubmed genes is all empty (unlikely with a large
+    # batch), datasets will detect a null feature type instead of using
+    # int. Explicitly pass it the correct type to prevent this.
+    features = dataset.features.copy()
+    features["gene2pubmed"] = features["gene2pubtator"]
+
+    pubmed_edges, info = read_pubmed_data()
+    dataset = dataset.map(
+        attach_pubmed_genes,
+        batched=True,
+        batch_size=batch_size,
+        features=features,
+        num_proc=max_cpu,
+        desc="Attach pubmed genes",
+    )
+
+    gene_ids: ArrayLike = jax.tree.leaves(
+        [dataset["gene2pubmed"], dataset["gene2pubtator"]]
+    )
+    gene_ids = np.unique_values(gene_ids)
+
+    symbol_table = info.merge(
+        pd.DataFrame({"GeneID": gene_ids}), how="right", on="GeneID"
+    )
+    symbol_table["Symbol"] = symbol_table["Symbol"].fillna(
+        symbol_table["GeneID"].transform(str)
+    )
+
+    symbols = deduplicate_symbols(symbol_table)
+    id2idx = dict(zip(symbol_table["GeneID"], symbol_table.index))
+
+    features["gene2pubtator"] = datasets.Sequence(
+        datasets.ClassLabel(names=symbols)
+    )
+    features["gene2pubtator"].feature.gene_ids = gene_ids
+    features["gene2pubmed"] = features["gene2pubtator"]
+
+    return dataset.map(
+        repack_labels,
+        batched=True,
+        batch_size=batch_size,
+        features=features,
+        num_proc=max_cpu,
+        desc="Repack label IDs",
+    )
+
+
+@dataclasses.dataclass
+class ParsingArgs:
+    ann_type: str
+    mask_token: str
+    n_files: int
+
+
+def _get_archives(
+    file_numbers: Iterable[int],
+    cache_dir: str | None,
+) -> list[str]:
+    """Find the local path to the BioC archives."""
+    downloader = BiocDownloader(cache_dir=cache_dir)
+    downloader.file_numbers = file_numbers
+    return downloader.download()
+
+
+def _grab_publication_data(
+    archives: list[str], args: ParsingArgs, max_cpu
+) -> list[dict[str, Any]]:
+    parser = functools.partial(_parse_tarfile, args=args)
+
+    n_iters = max(max_cpu, len(archives))
+    archive_reps = [archives[i % len(archives)] for i in range(n_iters)]
+    runs = [i // len(archives) for i in range(n_iters)]
+    total_runs = [
+        max((runs[i] + 1 for i in range(idx, n_iters, len(archives))))
+        for idx in range(len(archives))
+    ]
+    total_runs = [total_runs[i % len(archives)] for i in range(len(runs))]
+    position = list(range(len(total_runs)))
+
+    with concurrent.futures.ProcessPoolExecutor(max_workers=max_cpu) as exe:
+        pub_data = list(
+            exe.map(parser, archive_reps, runs, total_runs, position)
+        )
+
+    return [publication for file in pub_data for publication in file]
+
+
+def _parse_tarfile(
+    archive: str,
+    run_id: int,
+    total_runs: int,
+    position: int,
+    args: ParsingArgs,
+) -> list[dict[str, Any]]:
+    with tarfile.open(archive, "r") as tar:
+        n_files = args.n_files if args.n_files > 0 else len(tar.getnames())
+        run_files = [
+            tar.getnames()[i] for i in range(run_id, n_files, total_runs)
+        ]
+        parser = functools.partial(
+            _parse_file,
+            tar=tar,
+            ann_type=args.ann_type,
+            mask_token=args.mask_token,
+        )
+        desc = os.path.basename(archive) + f" ({run_id + 1}/{total_runs})"
+        return [
+            pubs
+            for file_data in (
+                parser(f)
+                for f in tqdm(run_files, desc=desc, position=position)
+            )
+            for pubs in file_data
+            if pubs is not None
         ]
 
-        # Remove gene IDs not seen in BioC files. Rare but they exist.
-        examples["gene2pubmed"] = [
-            [g for g in pub_genes if sorted_in(self._ann_ids, g)]
-            for pub_genes in examples["gene2pubmed"]
-        ]
 
-        return examples
+def _parse_file(
+    member: str, tar: tarfile.TarFile, ann_type: str, mask_token: str
+) -> list[dict[str, Any] | None]:
+    with tar.extractfile(member) as fd:  # type: ignore[union-attr]
+        try:
+            tree = ET.parse(fd)
+        except ET.ParseError as e:
+            print(f"Failed to parse {member}:\n  {e.msg}")
+            return [None]
 
-    def parse(self):
-        print(f"Reading files from {len(self.archives)} archives.")
-        pub_data = list(self._grab_publication_data())
-        dataset = datasets.Dataset.from_list(pub_data)
-
-        # If first batch of pubmed genes is all empty (unlikely with a large
-        # batch), datasets will detect a null feature type instead of using
-        # int. Explicitly pass it the correct type to prevent this.
-        features = dataset.features.copy()
-        features["gene2pubmed"] = features["gene2pubtator"]
-
-        self._pubmed_edges = self._read_pubmed_data()
-        dataset = dataset.map(
-            self._attach_pubmed_genes,
-            batched=True,
-            features=features,
-            batch_size=100,
-            num_proc=self.max_cpu,
-            desc="Attach pubmed genes",
+        parser = functools.partial(
+            _parse_doc, ann_type=ann_type, mask_token=mask_token
         )
+        return [parser(doc) for doc in tree.iterfind("document")]
 
-        def deduplicate(anns: list[str]) -> list[str]:
-            values, counts = np.unique_counts(anns)
-            duplicated = values[counts > 1]
-            counts = counts[counts > 1]
 
-            for i in range(len(anns)):
-                if anns[i] in duplicated:
-                    loc = np.isin(duplicated, anns[i])
-                    anns[i] += f"{counts[loc]}"
-                    counts[loc] -= 1
-
-            return anns
-
-        self._ann_symbols = deduplicate(self._ann_symbols)
-
-        features["gene2pubtator"] = datasets.Sequence(
-            datasets.ClassLabel(names=self._ann_symbols)
-        )
-        features["gene2pubmed"] = features["gene2pubtator"]
-
-        def repack_labels(
-            examples: dict[str, list[Any]],
-        ) -> dict[str, list[Any]]:
-            examples["gene2pubtator"] = [
-                np.searchsorted(self._ann_ids, ann)
-                for ann in (batch for batch in examples["gene2pubtator"])
-            ]
-            examples["gene2pubmed"] = [
-                np.searchsorted(self._ann_ids, ann)
-                for ann in (batch for batch in examples["gene2pubmed"])
-            ]
-            return examples
-
-        dataset = dataset.map(
-            repack_labels,
-            batched=True,
-            features=features,
-            num_proc=self.max_cpu,
-            desc="Repack label IDs",
-        )
-
-        dataset = dataset.map(
-            self._tokenize_and_embed,
-            batched=True,
-            batch_size=self.batch_size,
-            with_rank=True,
-            remove_columns="abstract",
-            num_proc=self.max_gpu,
-            desc="Embed Abstracts",
-        )
-        dataset.features["embedding"].length = len(dataset["embedding"][0])
-
-        return dataset
-
-    def _grab_publication_data(self) -> Iterable[dict[str, Any]]:
-        for archive in self.archives:
-            with tarfile.open(archive, "r") as tar:
-                desc = os.path.basename(archive)
-                for file in tqdm(self.iterfiles(tar), desc=desc):
-                    try:
-                        with tar.extractfile(file) as fd:  # type: ignore[union-attr]
-                            for pub_data in self._parse_file(fd):
-                                yield pub_data
-                    except ET.ParseError as e:
-                        print(f"Failed to parse {file}:\n  {e.msg}")
-
-    def _parse_file(self, fd) -> Iterable[dict[str, Any]]:
-        tree = ET.parse(fd)
-        for doc in tree.iterfind("document"):
-            try:
-                pmid, abstract, year, annotations = self._parse_doc(doc)
-
-                for ann_id, symbol in annotations:
-                    idx = np.searchsorted(self._ann_ids, ann_id)
-                    if (
-                        idx >= len(self._ann_ids)
-                        or ann_id != self._ann_ids[idx]
-                    ):
-                        self._ann_ids.insert(idx, ann_id)
-                        self._ann_symbols.insert(idx, symbol or "")
-                    elif symbol and (
-                        (not self._ann_symbols[idx])
-                        or (len(symbol) < len(self._ann_symbols[idx]))
-                    ):
-                        # Prefer smaller symbols
-                        self._ann_symbols[idx] = symbol
-
-                yield {
-                    "pmid": pmid,
-                    "abstract": abstract,
-                    "year": year,
-                    "gene2pubtator": list(
-                        {ann_id for ann_id, _ in annotations}
-                    ),
-                }
-            except ValueError:
-                continue
-
-    def _parse_doc(
-        self, doc: ET.Element
-    ) -> tuple[int, str, int | None, list[tuple[int, str | None]]]:
+def _parse_doc(doc, ann_type: str, mask_token: str) -> dict[str, Any] | None:
+    try:
         id_field = doc.find("id")
 
         # I don't think this should ever happen so raising an error to make it
@@ -336,131 +306,110 @@ class _BiocParser:
             ]
             year = int(years[0]) if len(years) else None
 
-        abstracts_elements = self._get_abstracts(doc)
-        stripped_abstract = "".join(
-            self._mask_abstract(abstract) for abstract in abstracts_elements
+        abstracts_elements = _get_abstracts(doc)
+        masked_abstract = "".join(
+            _mask_abstract(abstract, ann_type, mask_token)
+            for abstract in abstracts_elements
         )
 
         annotations = [
-            (ann_id, ann_symbol)
-            for ann_id, ann_symbol in sum(
-                (
-                    self._collect_annotations(abstract)
-                    for abstract in abstracts_elements
-                ),
-                [],
-            )
-            if (ann_id is not None)
+            ann_id
+            for abstract in abstracts_elements
+            for ann_id in _collect_annotations(abstract, ann_type)
+            if ann_id is not None
         ]
 
-        return (int(pmid), stripped_abstract, year, annotations)
+        return {
+            "pmid": int(pmid),
+            "abstract": masked_abstract,
+            "year": year,
+            "gene2pubtator": list(set(annotations)),
+        }
+    except ValueError:
+        return None
 
-    def _get_abstracts(self, doc: ET.Element) -> list[ET.Element]:
-        return [
-            passage
-            for passage in doc.iterfind("passage")
-            if any(
-                (
-                    (
-                        infon.attrib["key"] == "type"
-                        and infon.text == "abstract"
+
+def _get_abstracts(doc: ET.Element) -> list[ET.Element]:
+    return [
+        passage
+        for passage in doc.iterfind("passage")
+        if any(
+            (
+                (infon.attrib["key"] == "type" and infon.text == "abstract")
+                for infon in passage.iterfind("infon")
+            )
+        )
+    ]
+
+
+def _mask_abstract(passage: ET.Element, ann_type: str, mask_token: str) -> str:
+    offset_field = passage.find("offset")
+    if offset_field is None:
+        raise ValueError("Abstract missing offset field")
+
+    offset = int(offset_field.text) if offset_field.text else 0
+    text_field = passage.find("text")
+    if text_field is None:
+        raise ValueError("Abstract missing text field")
+    text = text_field.text if text_field.text else ""
+
+    mask = np.ones((len(text),))
+    for ann in passage.iterfind("annotation"):
+        if not _is_type(ann, ann_type):
+            continue
+
+        loc = ann.find("location")
+        if loc is None:
+            continue
+
+        pos_start = int(loc.attrib["offset"]) - offset
+        pos_end = pos_start + int(loc.attrib["length"])
+        mask[pos_start + 1 : pos_end] = 0
+        mask[pos_start] = -1
+
+    return "".join(
+        (
+            letter if mask[i] > 0 else mask_token
+            for i, letter in enumerate(text)
+            if mask[i]
+        )
+    )
+
+
+def _is_type(annotation: ET.Element, ann_type: str) -> bool:
+    return any(
+        (
+            (infon.attrib["key"] == "type") and (infon.text == ann_type)
+            for infon in annotation.iterfind("infon")
+        )
+    )
+
+
+def _collect_annotations(
+    passage: ET.Element, ann_type: str
+) -> list[int | None]:
+    return [
+        _get_identifier(ann)
+        for ann in passage.iterfind("annotation")
+        if _is_type(ann, ann_type)
+    ]
+
+
+def _get_identifier(annotation: ET.Element) -> int | None:
+    for infon in annotation.iterfind("infon"):
+        if infon.attrib["key"] == "identifier":
+            ann_id: int | None = None
+            if infon is not None:
+                # ValueError can occur when multiple IDs are given for a
+                # single gene, i.e. int("112;3939"). I don't know why a
+                # gene should have multiple IDs and it is a rare occurrence
+                # so these cases are dropped instead of picking an ID at
+                # random.
+                with contextlib.suppress(ValueError):
+                    ann_id = (
+                        int(infon.text) if infon.text is not None else None
                     )
-                    for infon in passage.iterfind("infon")
-                )
-            )
-        ]
 
-    def _is_type(self, annotation: ET.Element, ann_type: str) -> bool:
-        return any(
-            (
-                (infon.attrib["key"] == "type") and (infon.text == ann_type)
-                for infon in annotation.iterfind("infon")
-            )
-        )
+            return ann_id
 
-    def _get_identifier(
-        self,
-        annotation: ET.Element,
-    ) -> tuple[int | None, str | None]:
-        for infon in annotation.iterfind("infon"):
-            if infon.attrib["key"] == "identifier":
-                symbol = annotation.find("text")
-                ann_id: int | None = None
-                if infon is not None:
-                    # ValueError can occur when multiple IDs are given for a
-                    # single gene, i.e. int("112;3939"). I don't know why a
-                    # gene should have multiple IDs and it is a rare occurrence
-                    # so these cases are dropped instead of picking an ID at
-                    # random.
-                    with contextlib.suppress(ValueError):
-                        ann_id = (
-                            int(infon.text) if infon.text is not None else None
-                        )
-
-                return (ann_id, symbol.text if symbol is not None else None)
-
-        return (None, None)
-
-    def _mask_abstract(self, passage: ET.Element) -> str:
-        offset_field = passage.find("offset")
-        if offset_field is None:
-            raise ValueError("Abstract missing offset field")
-
-        offset = int(offset_field.text) if offset_field.text else 0
-        text_field = passage.find("text")
-        if text_field is None:
-            raise ValueError("Abstract missing text field")
-        text = text_field.text if text_field.text else ""
-
-        mask = np.ones((len(text),))
-        for ann in passage.iterfind("annotation"):
-            if not self._is_type(ann, self.ann_type):
-                continue
-
-            loc = ann.find("location")
-            if loc is None:
-                continue
-
-            pos_start = int(loc.attrib["offset"]) - offset
-            pos_end = pos_start + int(loc.attrib["length"])
-            mask[pos_start + 1 : pos_end] = 0
-            mask[pos_start] = -1
-
-        return "".join(
-            (
-                letter if mask[i] > 0 else self.mask_token
-                for i, letter in enumerate(text)
-                if mask[i]
-            )
-        )
-
-    def _collect_annotations(
-        self, passage: ET.Element
-    ) -> list[tuple[int | None, str | None]]:
-        return [
-            self._get_identifier(ann)
-            for ann in passage.iterfind("annotation")
-            if self._is_type(ann, self.ann_type)
-        ]
-
-    def _tokenize_and_embed(
-        self, examples: dict[str, Any], rank: int | None
-    ) -> dict[str, Any]:
-        device = (
-            f"cuda:{(rank or 0) % torch.cuda.device_count()}"
-            if torch.cuda.is_available()
-            else "cpu"
-        )
-        self.model.to(device)
-        inputs = self.tokenizer(
-            examples["abstract"],
-            return_tensors="pt",
-            padding=True,
-            truncation=True,
-            max_length=self.max_tokens,
-        ).to(device)
-
-        with torch.no_grad():
-            return {
-                "embedding": self.model(**inputs).last_hidden_state[:, 0, :]
-            }
+    return None
