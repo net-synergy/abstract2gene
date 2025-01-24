@@ -508,6 +508,7 @@ def from_huggingface(
     samples: str = "embedding",
     sample_id: str = "pmid",
     labels: str = "gene2pubtator",
+    max_sample_labels: int = 10,
     split: dict[str, float] = {"train": 0.8, "test": 0.1, "validate": 0.1},
     seed: int = 0,
     return_unlabeled: bool = False,
@@ -530,6 +531,10 @@ def from_huggingface(
         dataset.Feature type dataset.ClassLabel. This will be used for both
         label values and their symbols. In addition to "gene2pubtator",
         "gene2pubmed" is a useful option.
+    max_sample_labels : int, default 10
+        Drop samples with more than `max_sample_labels` labels. With too many
+        labels, the sample cannot be specific to a single label and therefore
+        is expected to not be labeled well.
     split : dict[str, float]
         Key-value pairs of
     seed : int, 0
@@ -599,6 +604,10 @@ def from_huggingface(
     splabels = to_sparse_labels(dataset, labels)
     label_masks = split_labels(splabels, split, rng)
     feats = dataset.with_format("jax", columns=[samples])[samples]
+
+    over_labeled = splabels.sum(axis=1) > max_sample_labels
+    splabels = splabels[np.logical_not(over_labeled), :]
+    feats = feats[np.logical_not(over_labeled), :]
     labeled = splabels.sum(axis=1) > 0
 
     unlabeled = None
@@ -609,12 +618,16 @@ def from_huggingface(
     feats = feats[labeled, :]
     splabels = splabels[labeled, :]
 
+    sample_names = dataset[sample_id]
+    if not isinstance(sample_names[0], str):
+        sample_names = [str(name) for name in sample_names]
+
     dataloaders = DataLoaderDict(
         {
             k: DataLoader(
                 feats,
                 splabels[:, label_masks[k]],
-                dataset[sample_id],
+                sample_names,
                 [name for (mask, name) in zip(label_masks[k], names) if mask],
                 seed=sd,
             )
