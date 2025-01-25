@@ -189,7 +189,8 @@ class DataLoader:
         samples: Samples,
         labels: InLabels,
         sample_names: Names,
-        label_names: Names,
+        label_ids: Names,
+        label_symbols: Names,
         seed: int = 0,
     ):
         """Construct a DataLoader.
@@ -202,8 +203,11 @@ class DataLoader:
             Should be in the form n_samples x n_labels.
         sample_names : list[str]
             One dimensional array of feature names (such as PMIDs)
-        label_names : list[str]
-            A vector of names for the columns of labels.
+        label_ids, label_symbols : list[str]
+            Names for the label columns. IDs should be unique and consistent
+            (such as NCBI Gene IDs). Symbols can be more flexible. The symbols
+            are intended to be meaningful to a human whereas IDs are intended
+            to be used to link between datasets.
         seed : int, default 0
             The seed for the random number generator.
 
@@ -213,7 +217,8 @@ class DataLoader:
         self._samples = samples
         self._sample_names = sample_names
         self._labels = labels
-        self._label_names = label_names
+        self._label_ids = label_ids
+        self._label_symbols = label_symbols
         self._template_mask: np.ndarray = np.asarray([])
 
         self._seed = seed
@@ -295,8 +300,12 @@ class DataLoader:
         return labels[:, self._label_idx]
 
     @property
-    def label_names(self) -> Names:
-        return [self._label_names[i] for i in self._label_idx]
+    def label_ids(self) -> Names:
+        return [self._label_ids[i] for i in self._label_idx]
+
+    @property
+    def label_symbols(self) -> Names:
+        return [self._label_symbols[i] for i in self._label_idx]
 
     @property
     def batch_size(self) -> int:
@@ -373,7 +382,8 @@ class DataLoader:
             self.samples[key, :],
             self._labels[key, :],
             self.sample_names[key],
-            self._label_names,
+            self._label_ids,
+            self._label_symbols,
             self._seed,
         )
         new._update_params(self._bs, self._ts, self._labels_per_batch)
@@ -400,7 +410,7 @@ class DataLoader:
             labels = self._labels[self._sample_mask, :]
         for batch_labels in label_pool:
             self._batch_label_names = [
-                self._label_names[idx] for idx in batch_labels
+                self._label_symbols[idx] for idx in batch_labels
             ]
             for batch in self._split_labels(labels[:, batch_labels]):
                 yield batch
@@ -508,6 +518,7 @@ def from_huggingface(
     samples: str = "embedding",
     sample_id: str = "pmid",
     labels: str = "gene2pubtator",
+    symbols: list[str] = [],
     max_sample_labels: int = 10,
     split: dict[str, float] = {"train": 0.8, "test": 0.1, "validate": 0.1},
     seed: int = 0,
@@ -531,6 +542,9 @@ def from_huggingface(
         dataset.Feature type dataset.ClassLabel. This will be used for both
         label values and their symbols. In addition to "gene2pubtator",
         "gene2pubmed" is a useful option.
+    symbols : list[str]
+        TEMPORARY A list of the label's symbols. Should be better integrated
+        into the huggingface dataset.
     max_sample_labels : int, default 10
         Drop samples with more than `max_sample_labels` labels. With too many
         labels, the sample cannot be specific to a single label and therefore
@@ -615,6 +629,7 @@ def from_huggingface(
         unlabeled = feats[np.logical_not(labeled)]
 
     names = dataset.features[labels].feature.names
+    # symbols = dataset.features[labels].feature.symbols
     feats = feats[labeled, :]
     splabels = splabels[labeled, :]
 
@@ -629,6 +644,11 @@ def from_huggingface(
                 splabels[:, label_masks[k]],
                 sample_names,
                 [name for (mask, name) in zip(label_masks[k], names) if mask],
+                [
+                    symbol
+                    for (mask, symbol) in zip(label_masks[k], symbols)
+                    if mask
+                ],
                 seed=sd,
             )
             for sd, k in zip(new_seed, split)
@@ -679,7 +699,12 @@ def load_dataset(
         labels is returned.
 
     """
+    import json
+
     path = os.path.join(data_dir or default_data_dir("datasets"), name)
+    with open(os.path.join(path, "symbols.json"), "r") as f:
+        symbols = json.load(f)
+
     return from_huggingface(
-        datasets.load_from_disk(path), labels=labels, **kwds
+        datasets.load_from_disk(path), labels=labels, symbols=symbols, **kwds
     )

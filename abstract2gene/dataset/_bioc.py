@@ -109,18 +109,6 @@ def bioc2dataset(
 
         return {"gene2pubmed": [get_genes(pmid) for pmid in examples["pmid"]]}
 
-    def deduplicate_symbols(symbol_table: pd.DataFrame) -> list[str]:
-        dups, counts = np.unique(symbol_table["Symbol"], return_counts=True)
-        dups = dups[counts > 1]
-        dup_counter = dict(zip(dups, np.zeros((dups.shape[0],), dtype=int)))
-        dup_mask = np.isin(symbol_table["Symbol"], dups)
-        symbols = symbol_table["Symbol"].array.tolist()
-        for i in np.arange(dup_mask.shape[0])[dup_mask]:
-            dup_counter[symbols[i]] += 1
-            symbols[i] = f"{symbols[i]}_{dup_counter[symbols[i]]}"
-
-        return symbols
-
     def repack_labels(examples: dict[str, list[Any]]) -> dict[str, list[Any]]:
         """Shrink label IDs to a sequential range."""
         return {
@@ -159,7 +147,6 @@ def bioc2dataset(
         [dataset["gene2pubmed"], dataset["gene2pubtator"]]
     )
     gene_ids = np.unique_values(gene_ids)
-
     symbol_table = info.merge(
         pd.DataFrame({"GeneID": gene_ids}), how="right", on="GeneID"
     )
@@ -167,13 +154,18 @@ def bioc2dataset(
         symbol_table["GeneID"].transform(str)
     )
 
-    symbols = deduplicate_symbols(symbol_table)
     id2idx = dict(zip(symbol_table["GeneID"], symbol_table.index))
 
+    gene_ids = [str(gid) for gid in np.unique_values(gene_ids)]
+    features = dataset.features.copy()
     features["gene2pubtator"] = datasets.Sequence(
-        datasets.ClassLabel(names=symbols)
+        datasets.ClassLabel(names=gene_ids)
     )
-    features["gene2pubtator"].feature.gene_ids = gene_ids
+
+    # FIXME: This does not store the symbols.
+    features["gene2pubtator"].feature.symbols = symbol_table[
+        "Symbol"
+    ].array.tolist()
     features["gene2pubmed"] = features["gene2pubtator"]
 
     return dataset.map(
