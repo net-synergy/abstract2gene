@@ -126,6 +126,9 @@ class DataLoaderDict(UserDict):
             dl._update_params(batch_size, template_size, labels_per_batch)
             for dl in self.data.values()
         }
+        self._batch_size = batch_size
+        self._template_size = template_size
+        self._labels_per_batch = labels_per_batch
 
     def reset_rngs(self):
         for dl in self.data.values():
