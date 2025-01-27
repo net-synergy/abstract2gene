@@ -156,9 +156,10 @@ class Trainer:
         batch_labels = []
         batch_regression = []
         for batch in dataset.batch():
+            label_indices = dataset.batch_label_indices
             batch_labels.append(batch[-1])
             batch_regression.append(
-                self.model.prediction(self.model(batch[0]), templates)
+                self.model.predict(batch[0], templates[label_indices, :])
             )
 
         labels = jnp.concat(batch_labels, axis=0)

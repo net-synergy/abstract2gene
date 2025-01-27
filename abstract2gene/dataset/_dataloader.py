@@ -7,6 +7,7 @@ __all__ = [
     "DataLoaderDict",
     "from_huggingface",
     "load_dataset",
+    "mock_dataloader",
 ]
 
 import os
@@ -228,6 +229,7 @@ class DataLoader:
         self._rng: np.random.Generator = np.random.default_rng(seed)
         self._batch_sample_names: list[str] = []
         self._batch_label_names: list[str] = []
+        self._batch_label_indices: np.ndarray = np.asarray([])
 
         self._label_idx: np.ndarray = np.asarray([])
 
@@ -400,6 +402,10 @@ class DataLoader:
         """Return the names for the batch's samples."""
         return self._batch_sample_names
 
+    @property
+    def batch_label_indices(self) -> np.ndarray:
+        return self._batch_label_indices
+
     def batch(self) -> Iterable[Batch]:
         """Generate batches of samples to train on."""
         label_pool = self._rng.permutation(self._label_idx)
@@ -415,6 +421,7 @@ class DataLoader:
             self._batch_label_names = [
                 self._label_symbols[idx] for idx in batch_labels
             ]
+            self._batch_label_indices = batch_labels
             for batch in self._split_labels(labels[:, batch_labels]):
                 yield batch
 
@@ -443,9 +450,7 @@ class DataLoader:
             ),
         ]
 
-        # If we're using all labels, don't try to find examples without one of
-        # the selected labels.
-        percent_true = 0.8 if not self._all_labels else 1
+        percent_true = 0.8
         n_draw = [0, max(int(bs * percent_true), 1)]
         n_draw[False] = bs - n_draw[True]
 
@@ -710,4 +715,60 @@ def load_dataset(
 
     return from_huggingface(
         datasets.load_from_disk(path), labels=labels, symbols=symbols, **kwds
+    )
+
+
+def mock_dataloader(
+    n_samples: int = 1000,
+    n_features: int = 40,
+    n_classes: int = 20,
+    noise: float = 0.5,
+    seed: int = 0,
+) -> DataLoaderDict:
+    rng = np.random.default_rng(seed)
+    labels = sp.sparse.coo_array(
+        (
+            np.ones((n_samples,), dtype=np.bool),
+            (np.arange(n_samples), [i % n_classes for i in range(n_samples)]),
+        )
+    ).tocsc()
+
+    samples: np.ndarray | jax.Array = rng.normal(
+        noise, 1, size=(n_samples, n_features)
+    )
+
+    def class_number(labels, index):
+        pos = np.diff(labels[[index], :].indptr)
+        return np.where(pos)
+
+    for samp in np.arange(n_samples):
+        label = class_number(labels, samp)
+        samples[samp, label] += 5
+
+    idx = rng.permuted(np.arange(n_samples))
+    samples = jnp.asarray(samples[idx, :])
+    labels = labels[idx, :]
+    split: dict = {"train": 0.6, "test": 0.2, "validate": 0.2}
+    pos = 0
+    for k, v in split.items():
+        split[k] = [pos, pos + int(v * n_classes)]
+        pos += int(v * n_classes)
+
+    split["validate"][1] = n_classes
+
+    return DataLoaderDict(
+        {
+            k: DataLoader(
+                samples,
+                labels[:, v[0] : v[1]],
+                [str(i) for i in range(n_samples)],
+                [str(i) for i in range(v[0], v[1])],
+                [str(i) for i in range(v[0], v[1])],
+                0,
+            )
+            for k, v in split.items()
+        },
+        batch_size=20,
+        template_size=16,
+        labels_per_batch=4,
     )
