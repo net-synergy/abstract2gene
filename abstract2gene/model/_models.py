@@ -1,6 +1,5 @@
 __all__ = [
     "RawSimilarity",
-    "SingleLayer",
     "MultiLayer",
     "MLPExtras",
     "Attention",
@@ -80,7 +79,7 @@ class Model(nnx.Module):
         self.templates = self(templates)
         self.label_names = names
 
-    def predict(self, x: Samples) -> jax.Array:
+    def predict(self, x: Samples, templates: Samples | None) -> jax.Array:
         """Calculate similarity of samples `x` to templates `template`.
 
         Parameters
@@ -100,16 +99,18 @@ class Model(nnx.Module):
         `model.label_names`
 
         """
-        if self.templates is None:
+        templates = templates if templates is not None else self.templates
+
+        if templates is None:
             raise ValueError(
                 """Must attach templates to model or explicitly pass templates.
                 See `model.attach_templates`."""
             )
 
-        return nnx.sigmoid(self.logits_fn(self(x), self.templates))
+        return nnx.sigmoid(self.logits_fn(self(x), templates))
 
     @nnx.jit
-    def logits_fn(self, x, templates):
+    def logits_fn(self, x: Samples, templates: Samples):
         return x @ templates.T
 
 
@@ -119,21 +120,16 @@ class RawSimilarity(Model):
     Prediction is the dot product between the samples and templates.
     """
 
-    def __call__(self, x):
+    def __init__(self, name: str):
+        super().__init__(name)
+        # rngs = nnx.Rngs(seed)
+        # self.template = LinearTemplate(rngs=rngs)
+
+    def __call__(self, x: Samples):
         return x
 
 
-class SingleLayer(Model):
-    def __init__(self, name: str, seed: int, dims_in: int, dims_out: int):
-        super().__init__(name)
-        rngs = nnx.Rngs(seed)
-        self.linear = nnx.Linear(dims_in, dims_out, rngs=rngs)
-
-    def __call__(self, x: Samples):
-        return nnx.gelu(self.linear(x))
-
-
-class MultiLayer(Model, nnx.Module):
+class MultiLayer(Model):
     def __init__(self, name: str, dims: tuple[int, ...], seed: int):
         """Multi-layer perceptron for predicting labels.
 
