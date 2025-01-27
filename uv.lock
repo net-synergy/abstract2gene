@@ -21,6 +21,7 @@ source = { editable = "." }
 dependencies = [
     { name = "datasets" },
     { name = "flax" },
+    { name = "igraph" },
     { name = "jax", extra = ["cuda12"] },
     { name = "keras" },
     { name = "numpy" },
@@ -30,6 +31,7 @@ dependencies = [
     { name = "plotnine" },
     { name = "scikit-learn" },
     { name = "scipy" },
+    { name = "speakeasy2" },
     { name = "synstore" },
     { name = "tensorflow" },
     { name = "torch" },
@@ -54,6 +56,7 @@ dev = [
 requires-dist = [
     { name = "datasets", specifier = ">=3.2.0" },
     { name = "flax", specifier = ">=0.10.2" },
+    { name = "igraph", specifier = ">=0.11.8" },
     { name = "jax", extras = ["cuda12"], specifier = ">=0.5.0" },
     { name = "keras", specifier = ">=2.11.0" },
     { name = "numpy", specifier = ">=1.26.1" },
@@ -63,6 +66,7 @@ requires-dist = [
     { name = "plotnine", specifier = ">=0.14.5" },
     { name = "scikit-learn", specifier = ">=1.6.1" },
     { name = "scipy", specifier = ">=1.15.1" },
+    { name = "speakeasy2", specifier = ">=0.1.3" },
     { name = "synstore", specifier = ">=0.1.3" },
     { name = "tensorflow", specifier = ">=2.12.1" },
     { name = "torch", specifier = ">=2.5.1" },
@@ -747,6 +751,27 @@ source = { registry = "https://pypi.org/simple" }
 sdist = { url = "https://files.pythonhosted.org/packages/f1/70/7703c29685631f5a7590aa73f1f1d3fa9a380e654b86af429e0934a32f7d/idna-3.10.tar.gz", hash = "sha256:12f65c9b470abda6dc35cf8e63cc574b1c52b11df2c86030af0ac09b01b13ea9", size = 190490 }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/76/c6/c88e154df9c4e1a2a66ccf0005a88dfb2650c1dffb6f5ce603dfbd452ce3/idna-3.10-py3-none-any.whl", hash = "sha256:946d195a0d259cbba61165e88e65941f16e9b36ea6ddb97f00452bae8b1287d3", size = 70442 },
+]
+
+[[package]]
+name = "igraph"
+version = "0.11.8"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "texttable" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/b8/8e/8810c9ccdef97c614423ca82fca693608db9546a1a9716671035e3630499/igraph-0.11.8.tar.gz", hash = "sha256:d7dc1404567ba3b0ea1bf8b5fa6e101617915c8ad11ea5a9f925a40bf4adad7d", size = 4568774 }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/24/f4/0c39bd163de47bf2e293813a9b4ae61e34575142dde2b744151c872f9da9/igraph-0.11.8-cp39-abi3-macosx_10_9_x86_64.whl", hash = "sha256:92c47ceb9f4c95ff7461cd94eaec55e901dbc59f6e51f4244d2dd064f31c5491", size = 1948579 },
+    { url = "https://files.pythonhosted.org/packages/dd/7e/8ee4e8f03b03feca33bb9dcc730724353ac36cbe7da7b38397f8ae5cd58b/igraph-0.11.8-cp39-abi3-macosx_11_0_arm64.whl", hash = "sha256:3a2afdb046b602fea71ca18aff6c72165de5002ec38d0dcf1275e34ecd0d9d02", size = 1753346 },
+    { url = "https://files.pythonhosted.org/packages/ea/7d/9d23c0936070f5beb99559c1064c9057374dfa435c7e3b13504d5a2c839e/igraph-0.11.8-cp39-abi3-manylinux_2_17_aarch64.manylinux2014_aarch64.whl", hash = "sha256:7870fb72fd9e9218940262671fb79baf281ef066aa1cd35adc092ce9ad39a038", size = 2984081 },
+    { url = "https://files.pythonhosted.org/packages/88/b0/210f242123b14d3ff4b36f97410f928e9bf446414c066dc8d3b8c9cad2ab/igraph-0.11.8-cp39-abi3-manylinux_2_17_i686.manylinux2014_i686.whl", hash = "sha256:c8108138ad605714761bc6d526feab54074904a99c47dcaabc269ed7b45e7650", size = 3060225 },
+    { url = "https://files.pythonhosted.org/packages/90/61/ec7edb5233ec2dc3d2129d94211801fb46a1c2b9beec40989707c82271f7/igraph-0.11.8-cp39-abi3-manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:e2e3abe641622cd9c95eb152c97caa22e68257a524cc1851a099b066f8f5c5f3", size = 3142403 },
+    { url = "https://files.pythonhosted.org/packages/6b/89/09f1d251c48f239238cf75714e8cee8fcaacb3513620e0f59dbf1ef0c51d/igraph-0.11.8-cp39-abi3-musllinux_1_2_aarch64.whl", hash = "sha256:b546eaa9461473a65bb56a51672c6aeb898b737d5e86c3efa1b1bf520ee4b031", size = 3893169 },
+    { url = "https://files.pythonhosted.org/packages/e2/90/3e913fd9698fb91f002fc7a96b2c81bdd77bb8f60f7cb3ec922b6e218666/igraph-0.11.8-cp39-abi3-musllinux_1_2_i686.whl", hash = "sha256:178ef859135ac5075a7159e6826a546b7340cf45a01a928c2a0c24c32e3dfa63", size = 4168476 },
+    { url = "https://files.pythonhosted.org/packages/4f/76/35ae678a78bd1d221af92f3ab98bedbce24968d9d096a2ddfde8580fbe5b/igraph-0.11.8-cp39-abi3-musllinux_1_2_x86_64.whl", hash = "sha256:a68ae7b6324e9c4cb1d04ce75b6e0f67974433fc7667895f1e25bf4f4c6fd530", size = 4056329 },
+    { url = "https://files.pythonhosted.org/packages/b5/f5/8c79fd8cdb3708cb404a31538c11eec4283e72dfc8cb47307966f0a3af74/igraph-0.11.8-cp39-abi3-win32.whl", hash = "sha256:cc93d2f97f93bf30c2027c31e9e1aa088a3c60cdfeb6b33e0259e4b40b4c5597", size = 1597440 },
+    { url = "https://files.pythonhosted.org/packages/b0/17/621d3a59430851a327421fdbec9ec8494d7fadaffc6dfdd42d4a95accbf2/igraph-0.11.8-cp39-abi3-win_amd64.whl", hash = "sha256:248831a6162130f16909c1f776cc246b48f692339ea4baca489cad4ed8dc0e13", size = 1976778 },
 ]
 
 [[package]]
@@ -2444,6 +2469,26 @@ wheels = [
 ]
 
 [[package]]
+name = "speakeasy2"
+version = "0.1.3"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "igraph" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/fc/84/df5281482af575f368d9e279279f2929b9c9b000c4419d1d52e1d925c020/speakeasy2-0.1.3.tar.gz", hash = "sha256:2c4cf24e8d3ec2fac465fab0eaf25247789e1ca0272da23098e57268681a46d1", size = 2686728 }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/53/04/b4f240db70c2ea58854d836a4cec0d71ce5cb7e86f526031cfd7b7a79d8b/speakeasy2-0.1.3-cp311-cp311-macosx_13_0_x86_64.whl", hash = "sha256:ccec32ac584520b6cf14a440906f572b9200d8f5309f456ab196302809e6544a", size = 299901 },
+    { url = "https://files.pythonhosted.org/packages/5a/14/996f0cb61c05bf35176acb5a393200ffb79e513937df8df64eb02eb72889/speakeasy2-0.1.3-cp311-cp311-macosx_14_0_arm64.whl", hash = "sha256:56bfba53d78681ad04b8450547ea7554a62c877fc404c6e8d6b1a266ab132067", size = 301603 },
+    { url = "https://files.pythonhosted.org/packages/34/32/ec3b84b74f8b464c2ef1279971e65d2fd38544f629be3c5d846df9c3c217/speakeasy2-0.1.3-cp311-cp311-manylinux_2_35_x86_64.whl", hash = "sha256:4b5bb89e42c4fcf4cd8f2c585f6378c214087add9b7f6cdf8017b59018c8b15e", size = 336278 },
+    { url = "https://files.pythonhosted.org/packages/95/f4/c591cd2cb14234ed3505b584bb92a642e0f5e7c9c7af81988c0f382e0f5c/speakeasy2-0.1.3-cp312-cp312-macosx_13_0_x86_64.whl", hash = "sha256:2f0d714c144699d55513491701ac16dccaa0197e7a8b89aa4f1a7cc2a1b7724a", size = 299905 },
+    { url = "https://files.pythonhosted.org/packages/e1/0e/497102bfd99d141099b323177b27daabdd12e39bc453fb4302c67c5ff9b1/speakeasy2-0.1.3-cp312-cp312-macosx_14_0_arm64.whl", hash = "sha256:c79d6a2e9c8dff19d5421ca3a9f9754ae2a584256449d6216d6264a77c8283ea", size = 301597 },
+    { url = "https://files.pythonhosted.org/packages/21/f8/455c11ae72e13dc39127b6e2303901b346ef30c3fb39fd408d7b6e63d702/speakeasy2-0.1.3-cp312-cp312-manylinux_2_35_x86_64.whl", hash = "sha256:f5fdc90489c165d8b6d33d9faf6fbf2defb763bdcd9dd361d231a9efd8df47ee", size = 336434 },
+    { url = "https://files.pythonhosted.org/packages/8d/e6/eb50846299b035511237a78686ab69955c9c682461c6bcea23e38ab28ec4/speakeasy2-0.1.3-cp313-cp313-macosx_13_0_x86_64.whl", hash = "sha256:2a2063e2568d2cbf531b5630e0810ef648e8362921a67c1d148a06d0af516fb5", size = 299890 },
+    { url = "https://files.pythonhosted.org/packages/3a/0f/659fc6cf5c97fb865db85cf191b45f05bca8d41d15af481979c322e923eb/speakeasy2-0.1.3-cp313-cp313-macosx_14_0_arm64.whl", hash = "sha256:517af9ada55bcc704d57c8fe847c6a952c798149889c7710226867cd15dd22a8", size = 301586 },
+    { url = "https://files.pythonhosted.org/packages/77/da/f34ff0a76af464402c13f839aef35a0cd94e464148210016e532287c21cd/speakeasy2-0.1.3-cp313-cp313-manylinux_2_35_x86_64.whl", hash = "sha256:948d3b864fd19e0f3b889cd40f0346d67d95f6fa9c62f34e4469ab3dbae7ea8e", size = 336474 },
+]
+
+[[package]]
 name = "stack-data"
 version = "0.6.3"
 source = { registry = "https://pypi.org/simple" }
@@ -2632,6 +2677,15 @@ source = { registry = "https://pypi.org/simple" }
 sdist = { url = "https://files.pythonhosted.org/packages/37/72/88311445fd44c455c7d553e61f95412cf89054308a1aa2434ab835075fc5/termcolor-2.5.0.tar.gz", hash = "sha256:998d8d27da6d48442e8e1f016119076b690d962507531df4890fcd2db2ef8a6f", size = 13057 }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/7f/be/df630c387a0a054815d60be6a97eb4e8f17385d5d6fe660e1c02750062b4/termcolor-2.5.0-py3-none-any.whl", hash = "sha256:37b17b5fc1e604945c2642c872a3764b5d547a48009871aea3edd3afa180afb8", size = 7755 },
+]
+
+[[package]]
+name = "texttable"
+version = "1.7.0"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/1c/dc/0aff23d6036a4d3bf4f1d8c8204c5c79c4437e25e0ae94ffe4bbb55ee3c2/texttable-1.7.0.tar.gz", hash = "sha256:2d2068fb55115807d3ac77a4ca68fa48803e84ebb0ee2340f858107a36522638", size = 12831 }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/24/99/4772b8e00a136f3e01236de33b0efda31ee7077203ba5967fcc76da94d65/texttable-1.7.0-py2.py3-none-any.whl", hash = "sha256:72227d592c82b3d7f672731ae73e4d1f88cd8e2ef5b075a7a7f01a23a3743917", size = 10768 },
 ]
 
 [[package]]

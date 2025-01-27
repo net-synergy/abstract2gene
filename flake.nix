@@ -50,6 +50,30 @@
               nativeBuildInputs = [ prev.poetry-core ];
               propagatedBuildInputs = [ prev.platformdirs ];
             });
+
+            speakeasy2 = (prev.buildPythonPackage rec {
+              pname = "speakeasy2";
+              version = "0.1.4";
+              format = "wheel";
+
+              dist = "cp312";
+              python = "cp312";
+              abi = "manylinux_2_35";
+              platform = "x86_64";
+
+              # src = prev.fetchPypi {
+              #   inherit pname version format dist python abi platform;
+              #   sha256 = "";
+              # };
+
+              src = pkgs.fetchurl {
+                url =
+                  "https://files.pythonhosted.org/packages/f3/bd/12e8504531b9b2049535e566a7ddf497f01fe236bc1fe58249509bae7313/${pname}-${version}-${dist}-${python}-${abi}_${platform}.whl";
+                sha256 = "sha256-NAK3pKHCqBWDKY6PQPdQmxOWrIHfDL8h3GQWZEKUzkI=";
+              };
+
+              propagatedBuildInputs = [ prev.igraph prev.numpy ];
+            });
           };
         };
       };
