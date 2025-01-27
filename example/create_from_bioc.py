@@ -1,12 +1,11 @@
 import json
 import os
 
-from abstract2gene.data import default_data_dir
-from abstract2gene.dataset import bioc2dataset
+from abstract2gene.dataset import bioc2dataset, dataset_path
 
 dataset = bioc2dataset([2], max_cpu=4)
 
-save_path = os.path.join(default_data_dir("datasets"), "bioc_small")
+save_path = dataset_path("bioc_small")
 if os.path.isdir(save_path):
     for f in os.listdir():
         os.unlink(f)
