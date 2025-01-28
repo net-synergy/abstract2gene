@@ -1,10 +1,9 @@
 import os
 
-import torch
 from datasets import load_from_disk
-from transformers import AutoModel, AutoTokenizer
+from sentence_transformers import SentenceTransformer
 
-from abstract2gene.data import default_data_dir
+from abstract2gene.dataset import dataset_path
 
 os.environ["XLA_FLAGS"] = (
     "--xla_gpu_enable_triton_softmax_fusion=true "
@@ -20,38 +19,20 @@ os.environ.update(
     }
 )
 
-
-def tokenize_and_embed(
-    examples: dict[str, list], rank: int | None
-) -> dict[str, list]:
-    device = f"cuda:{(rank or 0) % torch.cuda.device_count()}"
-    model.to(device)
-    inputs = tokenizer(
-        examples["abstract"],
-        return_tensors="pt",
-        padding=True,
-        truncation=True,
-        max_length=512,
-    ).to(device)
-
-    with torch.no_grad():
-        return {"embedding": model(**inputs).last_hidden_state[:, 0, :]}
+DATASET = "bioc_small"
 
 
-model_id = "allenai/specter"
-tokenizer = AutoTokenizer.from_pretrained(model_id)
-mask_token = tokenizer.special_tokens_map["mask_token"]
-model = AutoModel.from_pretrained(model_id)
-
-
-save_path = os.path.join(default_data_dir("datasets"), "bioc")
+model = SentenceTransformer("sentence-transformers/allenai-specter")
+save_path = dataset_path(DATASET)
 dataset = load_from_disk(save_path)
-dataset = dataset.select(range(100)).map(
-    tokenize_and_embed,
+
+dataset = dataset.select(range(1000)).map(
+    lambda examples: {"embedding": model.encode(examples["abstract"])},
     batched=True,
     batch_size=10,
     remove_columns="abstract",
     num_proc=1,
-    with_rank=True,
     desc="Embed Abstracts",
 )
+
+len(dataset["embedding"][0])

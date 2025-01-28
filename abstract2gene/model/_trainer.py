@@ -1,8 +1,5 @@
 __all__ = ["Trainer"]
 
-import os
-from datetime import datetime
-
 import jax.numpy as jnp
 import numpy as np
 import optax
@@ -23,10 +20,6 @@ class Trainer:
         data: DataLoaderDict,
         tx: optax.GradientTransformation,
     ):
-        # Tends to give a warning about devices so don't want it being loaded
-        # just because abstract2gene is imported.
-        from flax.metrics import tensorboard
-
         self.model = model
         self.data = data
         self.optimizer = nnx.Optimizer(model, tx)
@@ -41,13 +34,6 @@ class Trainer:
             "train_accuracy": [],
             "test_loss": [],
             "test_accuracy": [],
-        }
-
-        timestamp = datetime.now().strftime("%Y_%m_%d-%H_%M_%S")
-        log_dir = os.path.join("./tmp", model.name, timestamp)
-        self.writers = {
-            k: tensorboard.SummaryWriter(os.path.join(log_dir, k))
-            for k in ["train", "test"]
         }
 
     def _compute_templates(self, templates: Samples) -> Samples:
@@ -69,10 +55,8 @@ class Trainer:
     def write_metrics(self, stage: str, step: int):
         for metric, value in self.metrics.compute().items():
             self.history[f"{stage}_{metric}"].append(value)  # type: ignore[arg-type]
-            self.writers[stage].scalar(metric, value, step)
 
         self.metrics.reset()
-        self.writers[stage].flush()
 
     def train(
         self,
