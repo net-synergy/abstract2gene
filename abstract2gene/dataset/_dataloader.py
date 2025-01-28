@@ -501,7 +501,13 @@ class DataLoader:
         Use `DataLoader.train` to reverse this process.
         Use `DataLoader.is_training` to determine the current mode.
 
+        FIXME: eval mode is likely not working right. At the very least it is
+        currently much faster to pass each batches template through the model
+        than run the eval mode template through the model once (which is
+        weird).
+
         """
+        raise NotImplementedError
         ts = self.template_size
 
         labels = self._labels[:, self._label_idx]
@@ -719,7 +725,7 @@ def load_dataset(
     """
     import json
 
-    path = os.path.join(data_dir or default_data_dir("datasets"), name)
+    path = os.path.join(data_dir, name) if data_dir else dataset_path(name)
     with open(os.path.join(path, "symbols.json"), "r") as f:
         symbols = json.load(f)
 

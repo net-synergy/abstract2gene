@@ -9,7 +9,6 @@ Templates are the average of many examples of abstracts tagged with a label.
 
 __all__ = [
     "RawSimilarity",
-    "SingleLayer",
     "MultiLayer",
     "MLPExtras",
     "Attention",
@@ -17,12 +16,5 @@ __all__ = [
     "Model",
 ]
 
-from ._models import (
-    Attention,
-    MLPExtras,
-    Model,
-    MultiLayer,
-    RawSimilarity,
-    SingleLayer,
-)
+from ._models import Attention, MLPExtras, Model, MultiLayer, RawSimilarity
 from ._trainer import Trainer

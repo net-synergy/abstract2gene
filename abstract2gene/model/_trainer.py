@@ -96,6 +96,7 @@ class Trainer:
 
         self.data["train"].train()
         self.data["validate"].train()
+        self.model.train()
 
         window_size = 20
         delta = np.full(window_size, np.nan)
@@ -138,7 +139,10 @@ class Trainer:
         return self.history
 
     def test(
-        self, batch_size: int | None = None, seed: int = 0
+        self,
+        batch_size: int | None = None,
+        seed: int = 0,
+        threshold: float = 0.5,
     ) -> pd.DataFrame:
 
         batch_size_i = self.data.batch_size
@@ -146,26 +150,22 @@ class Trainer:
         self.data.update_params(batch_size=batch_size, labels_per_batch=-1)
         dataset = self.data["test"]
 
-        if dataset.is_training:
-            dataset.eval()
-
-        templates = self.data.fold_templates(
-            self.model(dataset.templates)
-        ).mean(axis=1)
+        self.model.eval()
 
         batch_labels = []
         batch_regression = []
         for batch in dataset.batch():
-            label_indices = dataset.batch_label_indices
-            batch_labels.append(batch[-1])
-            batch_regression.append(
-                self.model.predict(batch[0], templates[label_indices, :])
+            templates, x = self.data.split_batch(batch[0])
+            templates = self.data.fold_templates(self.model(templates)).mean(
+                axis=1
             )
+            batch_labels.append(batch[-1])
+            batch_regression.append(self.model.predict(x, templates))
 
         labels = jnp.concat(batch_labels, axis=0)
         regression = jnp.concat(batch_regression, axis=0)
 
-        preds = regression > 0.5
+        preds = regression > threshold
 
         tp = jnp.logical_and(preds, labels).sum()
         tn = jnp.logical_and(
@@ -179,12 +179,14 @@ class Trainer:
         print(f"specificity: {tn / (tn + fn)}")
 
         n_labels = 20
-        n_samples = 30
+        n_samples = 40
         label_mask = labels.sum(axis=0) > n_samples
         labels = labels[:, label_mask] == 1  # Convert from float to bool
         regression = regression[:, label_mask]
         label_names = [
-            name for mask, name in zip(label_mask, dataset.label_names) if mask
+            name
+            for mask, name in zip(label_mask, dataset.batch_label_name())
+            if mask
         ]
 
         rng = np.random.default_rng(seed=seed)
@@ -194,8 +196,8 @@ class Trainer:
         tags = np.tile(
             np.concat(
                 (
-                    np.asarray(["within"]).repeat(n_samples),
-                    np.asarray(["between"]).repeat(n_samples),
+                    np.asarray(["match"]).repeat(n_samples),
+                    np.asarray(["differ"]).repeat(n_samples),
                 )
             ),
             n_labels,
@@ -210,11 +212,13 @@ class Trainer:
 
         last = 0
         for label in selected:
-            within = regression[labels[:, label], label]
-            between = regression[jnp.logical_not(labels[:, label]), label]
-            scores[last : (last + n_samples)] = np.sort(within)[:n_samples]
+            match = regression[labels[:, label], label]
+            differ = regression[jnp.logical_not(labels[:, label]), label]
+            scores[last : (last + n_samples)] = rng.permuted(match)[:n_samples]
             last += n_samples
-            scores[last : (last + n_samples)] = np.sort(between)[:n_samples]
+            scores[last : (last + n_samples)] = rng.permuted(differ)[
+                :n_samples
+            ]
             last += n_samples
 
         self.data.update_params(
