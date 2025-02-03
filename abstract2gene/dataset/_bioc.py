@@ -1,4 +1,4 @@
-"""Collect files from BioCXML as DataSets and Templates."""
+"""Collect files from BioCXML files to a huggingface dataset."""
 
 __all__ = ["bioc2dataset"]
 
@@ -7,8 +7,10 @@ import contextlib
 import dataclasses
 import functools
 import os
+import re
 import tarfile
 import xml.etree.ElementTree as ET
+from collections import defaultdict
 from typing import Any, Iterable
 
 import datasets
@@ -29,7 +31,7 @@ def bioc2dataset(
     max_cpu: int = 1,
     mask_token: str = "[MASK]",
     cache_dir: str | None = None,
-) -> datasets.Dataset:
+) -> datasets.DatasetDict:
     """Create a dataset from Pubtator's BioC archive files.
 
     Pubtator's archive files contain abstracts plus annotations. Using these
@@ -71,9 +73,18 @@ def bioc2dataset(
 
     Returns
     -------
-    dataset : datasets.Dataset
+    dataset : datasets.DatasetDict
         A dataset containing the masked abstract for each publication and a
-        list of labels.
+        list of labels. The dataset is split based on the archives the data
+        originated from.
+
+    Examples
+    --------
+    To get all data as into a single dataset instead of multiple splits:
+
+    >> from datasets import concatenate_datasets
+    >> dataset_dict = bioc2dataset(list(range(10)))
+    >> dataset = concatenate_datasets([ds for ds in dataset_dict.values()])
 
     """
 
@@ -123,14 +134,20 @@ def bioc2dataset(
     args = ParsingArgs(ann_type, mask_token, n_files)
 
     print(f"Reading {len(tar_paths)} archives...")
-    dataset = datasets.Dataset.from_list(
-        _grab_publication_data(tar_paths, args, max_cpu)
+    dataset = datasets.DatasetDict(
+        {
+            archive: datasets.Dataset.from_list(data)
+            for archive, data in _grab_publication_data(
+                tar_paths, args, max_cpu
+            ).items()
+        }
     )
 
     # If first batch of pubmed genes is all empty (unlikely with a large
     # batch), datasets will detect a null feature type instead of using
     # int. Explicitly pass it the correct type to prevent this.
-    features = dataset.features.copy()
+    key = list(dataset.keys())[0]
+    features = dataset[key].features.copy()
     features["gene2pubmed"] = features["gene2pubtator"]
 
     pubmed_edges, info = read_pubmed_data()
@@ -144,7 +161,7 @@ def bioc2dataset(
     )
 
     gene_ids: ArrayLike = jax.tree.leaves(
-        [dataset["gene2pubmed"], dataset["gene2pubtator"]]
+        [[ds["gene2pubmed"], ds["gene2pubtator"]] for ds in dataset.values()]
     )
     gene_ids = np.unique_values(gene_ids)
     symbol_table = info.merge(
@@ -157,7 +174,7 @@ def bioc2dataset(
     id2idx = dict(zip(symbol_table["GeneID"], symbol_table.index))
 
     gene_ids = [str(gid) for gid in np.unique_values(gene_ids)]
-    features = dataset.features.copy()
+    features = dataset[key].features.copy()
     features["gene2pubtator"] = datasets.Sequence(
         datasets.ClassLabel(names=gene_ids)
     )
@@ -197,7 +214,7 @@ def _get_archives(
 
 def _grab_publication_data(
     archives: list[str], args: ParsingArgs, max_cpu
-) -> list[dict[str, Any]]:
+) -> dict[str, list[dict[str, Any]]]:
     parser = functools.partial(_parse_tarfile, args=args)
 
     n_iters = max(max_cpu, len(archives))
@@ -215,7 +232,18 @@ def _grab_publication_data(
             exe.map(parser, archive_reps, runs, total_runs, position)
         )
 
-    return [publication for file in pub_data for publication in file]
+    def simplify_name(name: str) -> str:
+        m = re.search(r"BioCXML\.(\d)\.tar\.gz", name)
+        if m is None:
+            raise ValueError("Got unexpected archive name")
+
+        return m.group(1)
+
+    out = defaultdict(list)
+    for archive, data in zip(archive_reps, pub_data):
+        out[simplify_name(archive)].append(data)
+
+    return {k: [el for ls in parts for el in ls] for k, parts in out.items()}
 
 
 def _parse_tarfile(
