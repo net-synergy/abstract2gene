@@ -7,6 +7,7 @@ from ._dataloader import (
     load_dataset,
     mock_dataloader,
 )
+from ._dataset_generator import dataset_generator
 
 __all__ = [
     "DataLoader",
@@ -16,4 +17,5 @@ __all__ = [
     "bioc2dataset",
     "dataset_path",
     "mock_dataloader",
+    "dataset_generator",
 ]
