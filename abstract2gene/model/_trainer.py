@@ -138,7 +138,10 @@ class Trainer:
 
         batch_labels = []
         batch_regression = []
-        for batch in dataset.batch():
+        n_batches = 50
+        for i, batch in enumerate(dataset.batch()):
+            if i > n_batches:
+                break
             templates, x = self.data.split_batch(batch[0])
             templates = self.data.fold_templates(self.model(templates)).mean(
                 axis=1
@@ -210,7 +213,7 @@ class Trainer:
         )
         return pd.DataFrame({"score": scores, "tag": tags, "symbol": symbols})
 
-    def plot(self, df: pd.DataFrame):
+    def plot(self, df: pd.DataFrame, name: str | None = None):
         from plotnine import (
             aes,
             element_text,
@@ -268,4 +271,7 @@ class Trainer:
             + ggtitle("Abstract embedding similarity")
             + theme(axis_text_x=element_text(angle=20))
         )
-        p.show()
+        if name:
+            p.save(f"figures/model_comparison/{name}", width=10, height=10)
+        else:
+            p.show()
