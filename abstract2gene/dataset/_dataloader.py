@@ -215,7 +215,7 @@ class DataLoader:
 
     def __init__(
         self,
-        samples: Samples,
+        samples: np.ndarray,
         labels: InLabels,
         sample_names: Names,
         label_ids: Names,
@@ -663,7 +663,7 @@ def from_huggingface(
     new_seed = rng.integers(9999, size=len(split)).astype(int)
     splabels = to_sparse_labels(dataset, labels)
     label_masks = split_labels(splabels, split, rng)
-    feats = dataset.with_format("jax", columns=[samples])[samples]
+    feats = dataset.with_format("np", columns=[samples])[samples]
 
     over_labeled = splabels.sum(axis=1) > max_sample_labels
     splabels = splabels[np.logical_not(over_labeled), :]
@@ -784,7 +784,7 @@ def mock_dataloader(
         samples[samp, label] += 5
 
     idx = rng.permuted(np.arange(n_samples))
-    samples = jnp.asarray(samples[idx, :])
+    samples = np.asarray(samples[idx, :])
     labels = labels[idx, :]
     split: dict = {"train": 0.6, "test": 0.2, "validate": 0.2}
     pos = 0
