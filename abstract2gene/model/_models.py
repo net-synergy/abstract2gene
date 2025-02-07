@@ -7,7 +7,10 @@ __all__ = [
 ]
 
 import jax
+import jax.numpy as jnp
 from flax import nnx
+from flax.nnx import rnglib
+from jax.typing import DTypeLike
 
 from abstract2gene.typing import Names, Samples
 
@@ -87,6 +90,9 @@ class Model(nnx.Module):
         x : ArrayLike
             Either a row vector of a single sample or a matrix where each row
             is a sample.
+        templates : ArrayLike, optional
+            A set of templates to compare x to. If None, templates fixed to the
+            model will be used.
 
         Returns
         -------
@@ -114,24 +120,62 @@ class Model(nnx.Module):
         return x @ templates.T
 
 
+class LinearTemplate(nnx.Module):
+    """A linear transformation between inputs and predefined weights.
+
+    For use with predefined templates, which act as the weights of the linear
+    layer. Output is `x @ templates + bias` where bias is a trainable scalar
+    applied to all output dimensions.
+    """
+
+    def __init__(self, rngs: rnglib.Rngs, dtype: DTypeLike = jnp.float32):
+        bias_key = rngs.params()
+        initializer = nnx.initializers.zeros_init()
+        self.bias = nnx.Param(initializer(bias_key, (1,), dtype))
+        self.templates: Samples | None = None
+
+    def fix(self, templates: Samples):
+        self.templates = templates
+
+    def __call__(self, x: Samples, templates: Samples | None):
+        templates = templates if templates is not None else self.templates
+
+        if templates is None:
+            raise ValueError(
+                "No templates attached to this layer. Either pass templates"
+                + "in or attach with the fix method."
+            )
+
+        return (x @ templates.T) + self.bias.value
+
+
 class RawSimilarity(Model):
     """Model without weights.
 
     Prediction is the dot product between the samples and templates.
     """
 
-    def __init__(self, name: str):
+    def __init__(self, name: str, seed: int):
         super().__init__(name)
-        # rngs = nnx.Rngs(seed)
-        # self.template = LinearTemplate(rngs=rngs)
+        rngs = nnx.Rngs(seed)
+        self.template = LinearTemplate(rngs=rngs)
 
     def __call__(self, x: Samples):
         return x
+
+    def logits_fn(self, x: Samples, templates: Samples):
+        x = x / jnp.linalg.norm(x, axis=1, keepdims=True)
+        templates = templates / jnp.linalg.norm(
+            templates, axis=1, keepdims=True
+        )
+        return self.template(x, templates)
 
 
 class MultiLayer(Model):
     def __init__(self, name: str, dims: tuple[int, ...], seed: int):
         """Multi-layer perceptron for predicting labels.
+
+        Adds dense layers after the embedding.
 
         Note: final step is dot product between samples and templates so the
         number of dimensions of the last layer is not the number of dimensions
@@ -144,6 +188,7 @@ class MultiLayer(Model):
             nnx.Linear(dims[i], dims[i + 1], rngs=rngs)
             for i in range(len(dims) - 1)
         ]
+        self.template = LinearTemplate(rngs=rngs)
 
     @nnx.jit
     def __call__(self, x):
@@ -152,9 +197,45 @@ class MultiLayer(Model):
 
         return x
 
+    def logits_fn(self, x: Samples, templates: Samples):
+        return self.template(x, templates)
+
 
 class MLPExtras(Model):
-    pass
+    def __init__(self, name: str, dims: tuple[int, ...], seed: int):
+        """Multi-layer perceptron for predicting labels.
+
+        Like MultiLayer but adds batch normalization to dense layers. This is
+        showing improvement in the average prediction for each gene. Without
+        this each genes predictions have a gene specific mean in variance. The
+        batch normalization is reducing this to make predictions on a constant
+        threshold value more viable.
+
+        Note: final step is dot product between samples and templates so the
+        number of dimensions of the last layer is not the number of dimensions
+        of the output. The true output dimensionality is determine by the
+        number of rows in templates.
+        """
+        super().__init__(name)
+        rngs = nnx.Rngs(seed)
+        self.template = LinearTemplate(rngs=rngs)
+        self.layers = [
+            nnx.Linear(dims[i], dims[i + 1], rngs=rngs)
+            for i in range(len(dims) - 1)
+        ]
+        self.normal = [
+            nnx.BatchNorm(dims[i], rngs=rngs) for i in range(1, len(dims))
+        ]
+
+    @nnx.jit
+    def __call__(self, x):
+        for norm, layer in zip(self.normal, self.layers):
+            x = nnx.gelu(norm(layer(x)))
+
+        return x
+
+    def logits_fn(self, x: Samples, templates: Samples):
+        return self.template(x, templates)
 
 
 class Attention(Model):
