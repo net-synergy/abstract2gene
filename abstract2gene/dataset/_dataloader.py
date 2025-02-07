@@ -44,6 +44,7 @@ class DataLoaderDict(UserDict):
         batch_size: int = 64,
         template_size: int = 32,
         labels_per_batch: int = -1,
+        max_steps: int = -1,
     ):
         """Initialize a DataLodareDict.
 
@@ -64,6 +65,9 @@ class DataLoaderDict(UserDict):
             `labels_per_batch` is 4, 4 labels will be randomly selected,
             batches will be made of samples with these labels until the pool
             runs dry. The resulting batch labels will have 4 columns.
+        max_steps : int, Optional
+            If set, this limits the number of batches that will be returned in
+            a single epoch.
 
         """
         super().__init__(mapping)
@@ -73,6 +77,7 @@ class DataLoaderDict(UserDict):
         self.update_params()
         self.n_features = mapping[list(mapping.keys())[0]].n_features
         self.n_samples = mapping[list(mapping.keys())[0]].n_samples
+        self.max_steps = max_steps
 
     @property
     def batch_size(self) -> int:
@@ -100,6 +105,16 @@ class DataLoaderDict(UserDict):
     def labels_per_batch(self, n: int):
         self._labels_per_batch = n
         self.update_params()
+
+    @property
+    def max_steps(self) -> int:
+        return self._max_steps
+
+    @max_steps.setter
+    def max_steps(self, n: int):
+        self._max_steps = n
+        for dl in self.data.values():
+            dl.max_steps = n
 
     def __repr__(self) -> str:
         data = (self.batch_size, self.template_size, self.labels_per_batch)
@@ -246,6 +261,7 @@ class DataLoader:
         self._bs = 0
         self._ts = 0
         self._labels_per_batch = 0
+        self.max_steps = 0
 
     def _update_params(
         self, batch_size: int, template_size: int, labels_per_batch: int
@@ -427,6 +443,8 @@ class DataLoader:
             labels = self._labels
         else:
             labels = self._labels[self._sample_mask, :]
+
+        batch_n = 0
         for batch_labels in label_pool:
             self._batch_label_names = [
                 self._label_symbols[idx] for idx in batch_labels
@@ -434,6 +452,10 @@ class DataLoader:
             self._batch_label_indices = batch_labels
             for batch in self._split_labels(labels[:, batch_labels]):
                 yield batch
+                batch_n += 1
+
+            if (self.max_steps > 0) and (batch_n > self.max_steps):
+                break
 
     def _split_labels(
         self,
