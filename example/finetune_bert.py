@@ -80,9 +80,9 @@ def finetune(
     }
 
     evaluator = TripletEvaluator(
-        anchors=eval_kwds["anchors"],
-        positives=eval_kwds["positives"],
-        negatives=eval_kwds["negatives"],
+        anchors=eval_kwds["anchor"],
+        positives=eval_kwds["positive"],
+        negatives=eval_kwds["negative"],
         batch_size=batch_size,
     )
 
