@@ -3,8 +3,6 @@
 __all__ = ["bioc2dataset"]
 
 import concurrent.futures
-import contextlib
-import dataclasses
 import functools
 import os
 import re
@@ -16,20 +14,27 @@ from typing import Any, Iterable
 import datasets
 import jax
 import numpy as np
-import pandas as pd
-from numpy.typing import ArrayLike
 from tqdm import tqdm
 
-from abstract2gene.data import BiocDownloader, PubmedDownloader
+from abstract2gene.data import BiocDownloader
+
+# Skip SNPs and mutations as they're hard to work with and rare. Could come
+# back to them later.
+ANN_TYPES = (
+    "gene",
+    "disease",
+    "species",
+    "chemical",
+    "cellline",
+    "chromosome",
+)
 
 
 def bioc2dataset(
     archives: Iterable[int],
     n_files: int = -1,
-    ann_type="Gene",
     batch_size: int = 1000,
     max_cpu: int = 1,
-    mask_token: str = "[MASK]",
     cache_dir: str | None = None,
 ) -> datasets.DatasetDict:
     """Create a dataset from Pubtator's BioC archive files.
@@ -53,19 +58,10 @@ def bioc2dataset(
         This is most sensible when using only a single archive to create a
         small dataset. Each file contains 100 abstracts and there is about 1e4
         files per archive.
-    ann_type : str, default "Gene"
-        Which annotation type to mask and use for labels. Values should be
-        exactly as presented in the XML files. Only annotations for abstract
-        passages are used not those from titles are full text. Annotations for
-        the selected annotation type are stripped from the abstracts before
-        embedding.
     batch_size : int, 1000
         Batch size used for dataset map functions.
     max_cpu : int, default 1
         How many process to run in parallel for CPU.
-    mask_token : str, default "[MASK]"
-        String to mask words with with. Should be specific to the tokenizer
-        being used.
     cache_dir : Optional str
         Where to cache and retrieve BioC archives locally. Defaults to
         `abstract2gene.storage.default_cache_dir`. A different cache can also
@@ -88,118 +84,52 @@ def bioc2dataset(
 
     """
 
-    def read_pubmed_data() -> tuple[pd.DataFrame, pd.DataFrame]:
-        # TODO: Assumes genes even if another annotation type is requested.
-        pubmed_downloader = PubmedDownloader()
-        gene2pubmed, gene_info = pubmed_downloader.download()
-        links = pd.read_table(
-            gene2pubmed,
-            header=0,
-            names=["TaxID", "GeneID", "PMID"],
-            usecols=["PMID", "GeneID"],
-        ).sort_values("PMID")
-
-        info = pd.read_table(
-            gene_info, usecols=["GeneID", "Symbol"]
-        ).sort_values("GeneID")
-
-        return (links, info)
-
-    def attach_pubmed_genes(
+    def repack_labels(
         examples: dict[str, list[Any]],
+        id2idx: dict[str, dict[str, int]],
     ) -> dict[str, list[Any]]:
-        def get_genes(pmid: int) -> list[int]:
-            start = np.searchsorted(pubmed_edges["PMID"], pmid)
-            end = start
-            while (end < pubmed_edges.shape[0]) and (
-                pubmed_edges["PMID"].iloc[end] == pmid
-            ):
-                end += 1
-
-            return list(pubmed_edges["GeneID"].iloc[start:end])
-
-        return {"gene2pubmed": [get_genes(pmid) for pmid in examples["pmid"]]}
-
-    def repack_labels(examples: dict[str, list[Any]]) -> dict[str, list[Any]]:
         """Shrink label IDs to a sequential range."""
         return {
             k: [
-                [id2idx[gene_id] for gene_id in pub_genes]
-                for pub_genes in examples[k]
+                [int(id2idx[k][ann_id]) for ann_id in pub_anns]
+                for pub_anns in examples[k]
             ]
-            for k in ("gene2pubmed", "gene2pubtator")
+            for k in ANN_TYPES
         }
 
     tar_paths = _get_archives(archives, cache_dir)
-    args = ParsingArgs(ann_type, mask_token, n_files)
-
     print(f"Reading {len(tar_paths)} archives...")
     dataset = datasets.DatasetDict(
         {
             archive: datasets.Dataset.from_list(data)
             for archive, data in _grab_publication_data(
-                tar_paths, args, max_cpu
+                tar_paths, n_files, max_cpu
             ).items()
         }
     )
 
-    # If first batch of pubmed genes is all empty (unlikely with a large
-    # batch), datasets will detect a null feature type instead of using
-    # int. Explicitly pass it the correct type to prevent this.
     key = list(dataset.keys())[0]
     features = dataset[key].features.copy()
-    features["gene2pubmed"] = features["gene2pubtator"]
+    id2idx: dict[str, dict[str, int]] = {}
+    for ann_type in ANN_TYPES:
+        ann_ids = jax.tree.leaves([ds[ann_type] for ds in dataset.values()])
+        ann_ids = np.unique_values(ann_ids).tolist()
+        id2idx[ann_type] = dict(zip(ann_ids, range(len(ann_ids))))
+        features[ann_type] = datasets.Sequence(
+            datasets.ClassLabel(names=ann_ids)
+        )
 
-    pubmed_edges, info = read_pubmed_data()
     dataset = dataset.map(
-        attach_pubmed_genes,
-        batched=True,
-        batch_size=batch_size,
-        features=features,
-        num_proc=max_cpu,
-        desc="Attach pubmed genes",
-    )
-
-    gene_ids: ArrayLike = jax.tree.leaves(
-        [[ds["gene2pubmed"], ds["gene2pubtator"]] for ds in dataset.values()]
-    )
-    gene_ids = np.unique_values(gene_ids)
-    symbol_table = info.merge(
-        pd.DataFrame({"GeneID": gene_ids}), how="right", on="GeneID"
-    )
-    symbol_table["Symbol"] = symbol_table["Symbol"].fillna(
-        symbol_table["GeneID"].transform(str)
-    )
-
-    id2idx = dict(zip(symbol_table["GeneID"], symbol_table.index))
-
-    gene_ids = [str(gid) for gid in np.unique_values(gene_ids)]
-    features = dataset[key].features.copy()
-    features["gene2pubtator"] = datasets.Sequence(
-        datasets.ClassLabel(names=gene_ids)
-    )
-
-    # FIXME: This does not store the symbols.
-    features["gene2pubtator"].feature.symbols = symbol_table[
-        "Symbol"
-    ].array.tolist()
-    features["gene2pubmed"] = features["gene2pubtator"]
-
-    return dataset.map(
         repack_labels,
         batched=True,
         batch_size=batch_size,
         features=features,
         num_proc=max_cpu,
+        fn_kwargs={"id2idx": id2idx},
         desc="Repack label IDs",
     )
 
-
-@dataclasses.dataclass
-class ParsingArgs:
-    ann_type: str
-    mask_token: str
-    n_files: int
+    return datasets.DatasetDict(dataset)
 
 
 def _get_archives(
@@ -213,9 +143,9 @@ def _get_archives(
 
 
 def _grab_publication_data(
-    archives: list[str], args: ParsingArgs, max_cpu
+    archives: list[str], n_files: int, max_cpu
 ) -> dict[str, list[dict[str, Any]]]:
-    parser = functools.partial(_parse_tarfile, args=args)
+    parser = functools.partial(_parse_tarfile, n_files=n_files)
 
     n_iters = max(max_cpu, len(archives))
     archive_reps = [archives[i % len(archives)] for i in range(n_iters)]
@@ -237,7 +167,7 @@ def _grab_publication_data(
         if m is None:
             raise ValueError("Got unexpected archive name")
 
-        return m.group(1)
+        return f"BioCXML_{m.group(1)}"
 
     out = defaultdict(list)
     for archive, data in zip(archive_reps, pub_data):
@@ -251,19 +181,15 @@ def _parse_tarfile(
     run_id: int,
     total_runs: int,
     position: int,
-    args: ParsingArgs,
+    n_files: int,
 ) -> list[dict[str, Any]]:
     with tarfile.open(archive, "r") as tar:
-        n_files = args.n_files if args.n_files > 0 else len(tar.getnames())
+        max_files = len(tar.getnames())
+        n_files = min(max_files, n_files) if n_files > 0 else max_files
         run_files = [
             tar.getnames()[i] for i in range(run_id, n_files, total_runs)
         ]
-        parser = functools.partial(
-            _parse_file,
-            tar=tar,
-            ann_type=args.ann_type,
-            mask_token=args.mask_token,
-        )
+        parser = functools.partial(_parse_file, tar=tar)
         desc = os.path.basename(archive) + f" ({run_id + 1}/{total_runs})"
         return [
             pubs
@@ -277,7 +203,7 @@ def _parse_tarfile(
 
 
 def _parse_file(
-    member: str, tar: tarfile.TarFile, ann_type: str, mask_token: str
+    member: str, tar: tarfile.TarFile
 ) -> list[dict[str, Any] | None]:
     with tar.extractfile(member) as fd:  # type: ignore[union-attr]
         try:
@@ -286,13 +212,10 @@ def _parse_file(
             print(f"Failed to parse {member}:\n  {e.msg}")
             return [None]
 
-        parser = functools.partial(
-            _parse_doc, ann_type=ann_type, mask_token=mask_token
-        )
-        return [parser(doc) for doc in tree.iterfind("document")]
+        return [_parse_doc(doc) for doc in tree.iterfind("document")]
 
 
-def _parse_doc(doc, ann_type: str, mask_token: str) -> dict[str, Any] | None:
+def _parse_doc(doc) -> dict[str, Any] | None:
     try:
         id_field = doc.find("id")
 
@@ -305,45 +228,69 @@ def _parse_doc(doc, ann_type: str, mask_token: str) -> dict[str, Any] | None:
         if pmid is None:
             raise ValueError("Document missing ID field.")
 
-        passage = doc.find("passage")
-        if pmid.startswith("PMC") and passage:
-            pmids = [
-                infon.text
-                for infon in passage.iterfind("infon")
-                if infon.attrib["key"] == "article-id_pmid" and infon.text
-            ]
-            if len(pmids):
-                pmid = pmids[0]
-            else:
+        title_passage = doc.find("passage")
+        if pmid.startswith("PMC") and title_passage:
+            pmid = _collect_infon(title_passage, "article-id_pmid")
+
+            if pmid is None:
                 raise ValueError("Document missing ID field.")
 
         year: int | None = None
-        if passage:
-            years = [
-                infon.text
-                for infon in passage.iterfind("infon")
-                if infon.attrib["key"] == "year" and infon.text
-            ]
-            year = int(years[0]) if len(years) else None
+        if title_passage:
+            year_str = _collect_infon(title_passage, "year")
+            year = int(year_str) if year_str else None
 
-        abstracts_elements = _get_abstracts(doc)
-        masked_abstract = "".join(
-            _mask_abstract(abstract, ann_type, mask_token)
-            for abstract in abstracts_elements
-        )
+            title = (
+                title_passage.find("text").text
+                if title_passage.find("text")
+                else ""
+            )
+
+        abstract_elements = _get_abstracts(doc)
+
+        def collect_text(element) -> str:
+            text_field = element.find("text")
+            if text_field is None:
+                raise ValueError("Abstract missing text field")
+
+            return text_field.text if text_field.text else ""
+
+        def get_offset(element) -> int:
+            offset = element.find("offset")
+            if offset is None:
+                raise ValueError("Missing offset")
+
+            return int(offset.text)
+
+        abs_text = [collect_text(abstract) for abstract in abstract_elements]
+        abstract = " ".join(abs_text)
+
+        offsets = [get_offset(abstract) for abstract in abstract_elements]
+        for i in range(1, len(offsets)):
+            offsets[i] -= sum(len(text) + 1 for text in abs_text[:i])
 
         annotations = [
-            ann_id
-            for abstract in abstracts_elements
-            for ann_id in _collect_annotations(abstract, ann_type)
-            if ann_id is not None
+            annotation
+            for offset, abstract in zip(offsets, abstract_elements)
+            for annotation in _collect_annotations(abstract, offset)
         ]
 
+        ann_data: dict[str, set[str]] = {k: set() for k in ANN_TYPES}
+        for identifier, meta in annotations:
+            if meta["type"].lower() in ann_data:
+                ann_data[meta["type"].lower()].add(identifier)
+
+        _, meta_data = zip(*annotations)
+
         return {
-            "pmid": int(pmid),
-            "abstract": masked_abstract,
-            "year": year,
-            "gene2pubtator": list(set(annotations)),
+            **{
+                "pmid": int(pmid),
+                "year": year,
+                "title": title,
+                "abstract": abstract,
+                "annotation": list(meta_data),
+            },
+            **{k: list(v) for k, v in ann_data.items()},
         }
     except ValueError:
         return None
@@ -362,74 +309,49 @@ def _get_abstracts(doc: ET.Element) -> list[ET.Element]:
     ]
 
 
-def _mask_abstract(passage: ET.Element, ann_type: str, mask_token: str) -> str:
-    offset_field = passage.find("offset")
-    if offset_field is None:
-        raise ValueError("Abstract missing offset field")
+def _collect_infon(passage: ET.Element, key: str) -> str | None:
+    """Return first item that matches key."""
+    for infon in passage.iterfind("infon"):
+        if infon.attrib["key"] == key:
+            return infon.text
 
-    offset = int(offset_field.text) if offset_field.text else 0
-    text_field = passage.find("text")
-    if text_field is None:
-        raise ValueError("Abstract missing text field")
-    text = text_field.text if text_field.text else ""
-
-    mask = np.ones((len(text),))
-    for ann in passage.iterfind("annotation"):
-        if not _is_type(ann, ann_type):
-            continue
-
-        loc = ann.find("location")
-        if loc is None:
-            continue
-
-        pos_start = int(loc.attrib["offset"]) - offset
-        pos_end = pos_start + int(loc.attrib["length"])
-        mask[pos_start + 1 : pos_end] = 0
-        mask[pos_start] = -1
-
-    return "".join(
-        (
-            letter if mask[i] > 0 else mask_token
-            for i, letter in enumerate(text)
-            if mask[i]
-        )
-    )
-
-
-def _is_type(annotation: ET.Element, ann_type: str) -> bool:
-    return any(
-        (
-            (infon.attrib["key"] == "type") and (infon.text == ann_type)
-            for infon in annotation.iterfind("infon")
-        )
-    )
+    return None
 
 
 def _collect_annotations(
-    passage: ET.Element, ann_type: str
-) -> list[int | None]:
+    passage: ET.Element, offset: int
+) -> list[tuple[str, dict]]:
     return [
-        _get_identifier(ann)
-        for ann in passage.iterfind("annotation")
-        if _is_type(ann, ann_type)
+        (ann_id, meta)
+        for (ann_id, meta) in (
+            _read_annotation(annotation, offset)
+            for annotation in passage.iterfind("annotation")
+        )
+        if (ann_id is not None) and (meta is not None)
     ]
 
 
-def _get_identifier(annotation: ET.Element) -> int | None:
+def _read_annotation(
+    annotation: ET.Element, offset: int
+) -> tuple[str | None, dict | None]:
+    ann_id: str | None = None
+    ann_type: str | None = None
     for infon in annotation.iterfind("infon"):
-        if infon.attrib["key"] == "identifier":
-            ann_id: int | None = None
-            if infon is not None:
-                # ValueError can occur when multiple IDs are given for a
-                # single gene, i.e. int("112;3939"). I don't know why a
-                # gene should have multiple IDs and it is a rare occurrence
-                # so these cases are dropped instead of picking an ID at
-                # random.
-                with contextlib.suppress(ValueError):
-                    ann_id = (
-                        int(infon.text) if infon.text is not None else None
-                    )
+        if infon.attrib["key"] == "identifier" and infon is not None:
+            ann_id = infon.text if infon.text is not None else None
+        if infon.attrib["key"] == "type" and infon is not None:
+            ann_type = infon.text if infon.text is not None else None
 
-            return ann_id
+    location = annotation.find("location")
+    if (
+        (ann_id is None)
+        or (ann_type is None)
+        or (location is None)
+        or (ann_id == "-")
+    ):
+        return (None, None)
 
-    return None
+    offset = int(location.attrib["offset"]) - offset
+    length = int(location.attrib["length"])
+
+    return (ann_id, {"type": ann_type, "offset": offset, "length": length})
