@@ -1,4 +1,4 @@
-__all__ = ["Fetures", "Labels", "Batch", "PyTree", "Names"]
+__all__ = ["Features", "Labels", "Batch", "PyTree", "Names"]
 
 from typing import Any, Sequence
 
