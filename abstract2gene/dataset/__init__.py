@@ -1,3 +1,4 @@
+from . import mutators
 from ._bioc import bioc2dataset
 from ._dataloader import (
     DataLoader,
@@ -18,4 +19,5 @@ __all__ = [
     "dataset_path",
     "mock_dataloader",
     "dataset_generator",
+    "mutators",
 ]
