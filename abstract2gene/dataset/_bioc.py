@@ -271,11 +271,8 @@ def _parse_doc(doc) -> dict[str, Any] | None:
             year_str = _collect_infon(title_passage, "year")
             year = int(year_str) if year_str else None
 
-            title = (
-                title_passage.find("text").text
-                if title_passage.find("text")
-                else ""
-            )
+            title_text = title_passage.find("text")
+            title = title_text.text if title_text is not None else ""
 
         abstract_elements = _get_abstracts(doc)
 
