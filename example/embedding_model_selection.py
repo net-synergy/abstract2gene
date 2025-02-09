@@ -51,7 +51,7 @@ dataset_dict = load_from_disk(dataset_path(DATASET)).train_test_split(
 )
 
 dataset_train = dataset_generator(dataset_dict["train"], seed=0, batch_size=64)
-dataset_train = dataset_train.remove_columns("negatives")
+dataset_train = dataset_train.remove_columns("negative")
 dataset_test = dataset_generator(dataset_dict["test"], seed=0, batch_size=64)
 
 args = SentenceTransformerTrainingArguments(
@@ -69,9 +69,9 @@ eval_examples = list(itertools.islice(dataset_test, n_eval))
 eval_kwds = {k: [ex[k] for ex in eval_examples] for k in dataset_test.features}
 
 evaluator = TripletEvaluator(
-    anchors=eval_kwds["anchors"],
-    positives=eval_kwds["positives"],
-    negatives=eval_kwds["negatives"],
+    anchors=eval_kwds["anchor"],
+    positives=eval_kwds["positive"],
+    negatives=eval_kwds["negative"],
 )
 
 for name in MODELS:

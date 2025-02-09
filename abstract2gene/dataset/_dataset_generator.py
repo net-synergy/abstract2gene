@@ -69,18 +69,15 @@ def dataset_generator(
                 ]
 
                 yield {
-                    "anchors": batch_samps[positive_idx[0]],
-                    "positives": batch_samps[positive_idx[1]],
-                    "negatives": batch_samps[
+                    "anchor": batch_samps[positive_idx[0]],
+                    "positive": batch_samps[positive_idx[1]],
+                    "negative": batch_samps[
                         negative_idx[i % np.logical_not(label_mask).sum()]
                     ],
                 }
 
     feats = Features(
-        {
-            k: Value(dtype="string")
-            for k in ["anchors", "positives", "negatives"]
-        }
+        {k: Value(dtype="string") for k in ["anchor", "positive", "negative"]}
     )
     return IterableDataset.from_generator(_generator, features=feats)
 
