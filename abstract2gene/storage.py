@@ -8,7 +8,11 @@ __all__ = [
     "delete_from_cache",
     "delete_from_data",
     "_storage_factory",
+    "dataset_path",
+    "model_path",
 ]
+
+import os
 
 import synstore
 
@@ -25,3 +29,19 @@ list_data = synstore.list_data
 delete_from_cache = synstore.delete_from_cache
 delete_from_data = synstore.delete_from_data
 _storage_factory = synstore.storage_factory
+
+def dataset_path(name: str) -> str:
+    """Return a path below the default datasets path.
+
+    The default path for storing datasets is a function of `default_data_dir`,
+    setting this will change the results of `dataset_path`.
+    """
+    return os.path.join(default_data_dir("datasets"), name)
+
+def model_path(name: str) -> str:
+    """Return a path below the default models path.
+
+    The default path for storing models is a function of `default_data_dir`,
+    setting this will change the results of `dataset_path`.
+    """
+    return os.path.join(default_data_dir("models"), name)

@@ -10,8 +10,8 @@ from sentence_transformers.evaluation import TripletEvaluator
 from sentence_transformers.losses import MultipleNegativesRankingLoss
 from sentence_transformers.training_args import BatchSamplers
 
-from abstract2gene.data import default_data_dir
-from abstract2gene.dataset import dataset_generator, dataset_path
+from abstract2gene.data import dataset_path, model_path
+from abstract2gene.dataset import dataset_generator
 
 MODELS = {
     "ernie": "nghuyong/ernie-2.0-base-en",
@@ -98,9 +98,7 @@ def finetune(
     )
 
     trainer.train()
-    model.save_pretrained(
-        default_data_dir(f"models/{model_name}-abstract-genes")
-    )
+    model.save_pretrained(model_path(f"{model_name}-abstract-genes"))
 
 
 if __name__ == "__main__":

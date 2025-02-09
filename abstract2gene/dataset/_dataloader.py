@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 __all__ = [
-    "dataset_path",
     "DataLoader",
     "DataLoaderDict",
     "from_huggingface",
@@ -21,20 +20,9 @@ import jax.numpy as jnp
 import numpy as np
 import scipy as sp
 
-from abstract2gene.storage import default_data_dir
-
 from ..typing import Batch, Names, Samples
 
 InLabels: TypeAlias = sp.sparse.csc_array
-
-
-def dataset_path(name: str) -> str:
-    """Return a path below the default datasets path.
-
-    The default path for storing datasets is a function of `default_data_dir`,
-    setting this will change the results of `dataset_path`.
-    """
-    return os.path.join(default_data_dir("datasets"), name)
 
 
 class DataLoaderDict(UserDict):

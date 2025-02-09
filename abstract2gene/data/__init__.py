@@ -1,10 +1,21 @@
 """Download relevant data from various sources."""
 
-__all__ = ["download", "default_cache_dir", "default_data_dir"]
+__all__ = [
+    "download",
+    "default_cache_dir",
+    "default_data_dir",
+    "model_path",
+    "dataset_path",
+]
 
 from typing import Iterable
 
-from abstract2gene.storage import default_cache_dir, default_data_dir
+from abstract2gene.storage import (
+    dataset_path,
+    default_cache_dir,
+    default_data_dir,
+    model_path,
+)
 
 from .bioc import BiocDownloader
 from .pubmed import PubmedDownloader

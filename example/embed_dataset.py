@@ -3,7 +3,7 @@ import os
 from datasets import load_from_disk
 from sentence_transformers import SentenceTransformer
 
-from abstract2gene.dataset import dataset_path
+from abstract2gene.data import dataset_path
 
 os.environ["XLA_FLAGS"] = (
     "--xla_gpu_enable_triton_softmax_fusion=true "

@@ -27,20 +27,25 @@ import matplotlib.pyplot as plt
 import numpy as np
 import speakeasy2 as se2
 from datasets import load_from_disk
+from sentence_transformers import SentenceTransformer
 
-from abstract2gene.data import default_data_dir
+from abstract2gene.data import dataset_path, model_path
 
 DATASET = "bioc_small_embeddings"
+DATASET = "bioc_small"
 N_LABELS = 15
 SAMPLES_PER_LABEL = 100
 LABEL_SET = "gene2pubtator"
+MODEL = model_path("specter-abstract-genes")
+name = "specter-finetuned_and_trained"
+
 
 ## Load data
-dataset_path = default_data_dir(os.path.join("datasets", DATASET))
-dataset = load_from_disk(dataset_path)
-with open(os.path.join(dataset_path, "symbols.json"), "r") as f:
+dataset = load_from_disk(dataset_path(DATASET))
+with open(os.path.join(dataset_path(DATASET), "symbols.json"), "r") as f:
     symbols = json.load(f)
 
+embed = SentenceTransformer(MODEL)
 ## Filter to most common genes
 counts = np.bincount(jax.tree.leaves(dataset[LABEL_SET]))
 gene_ids = np.argsort(
@@ -50,6 +55,14 @@ gene_ids = np.argsort(
 dataset = dataset.filter(
     lambda example: any(np.isin(example["gene2pubtator"], gene_ids)),
     num_proc=10,
+).map(
+    lambda examples: {
+        "embedding": [
+            embed.encode(abstract) for abstract in examples["abstract"]
+        ]
+    },
+    batched=True,
+    batch_size=10,
 )
 
 symbols = np.take(symbols, gene_ids)

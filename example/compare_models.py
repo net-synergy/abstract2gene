@@ -7,7 +7,7 @@ import optax
 from sentence_transformers import SentenceTransformer
 
 import abstract2gene as a2g
-from abstract2gene.data import default_data_dir
+from abstract2gene.data import dataset_path, model_path
 
 # from abstract2gene.dataset import mock_dataloader
 
@@ -30,14 +30,10 @@ os.environ.update(
     }
 )
 
-encoder = SentenceTransformer(
-    os.path.join(default_data_dir("models"), "specter-abstract-genes")
-)
+encoder = SentenceTransformer(model_path("specter-abstract-genes"))
 
 labels = "gene2pubtator"
-dataset = datasets.load_from_disk(
-    os.path.join(default_data_dir("datasets"), DATASET)
-)
+dataset = datasets.load_from_disk(dataset_path(DATASET))
 genes = np.bincount(jax.tree.leaves(dataset[labels]))
 mask = genes > np.quantile(genes, 0.75)
 gene_ids = np.arange(len(genes))[mask]

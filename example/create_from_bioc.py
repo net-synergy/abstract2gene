@@ -4,7 +4,8 @@ import shutil
 import datasets
 from huggingface_hub.repocard import DatasetCard, DatasetCardData
 
-from abstract2gene.dataset import bioc2dataset, dataset_path, mutators
+from abstract2gene.data import dataset_path
+from abstract2gene.dataset import bioc2dataset, mutators
 
 
 def clear_save(path):

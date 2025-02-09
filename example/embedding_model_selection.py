@@ -12,7 +12,8 @@ from sentence_transformers.evaluation import TripletEvaluator
 from sentence_transformers.losses import MultipleNegativesRankingLoss
 from sentence_transformers.training_args import BatchSamplers
 
-from abstract2gene.dataset import dataset_generator, dataset_path
+from abstract2gene.data import dataset_path
+from abstract2gene.dataset import dataset_generator
 
 # TEMP: Change to full dataset. Requires modifying to work with a datasetdict.
 DATASET = "bioc_finetune"
