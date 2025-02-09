@@ -1,27 +1,18 @@
-import json
 import os
+import shutil
 
-from abstract2gene.dataset import bioc2dataset, dataset_path
+import datasets
+from huggingface_hub.repocard import DatasetCard, DatasetCardData
 
-dataset = bioc2dataset(list(range(10)), max_cpu=16)
-
-save_path = dataset_path("bioc")
-if os.path.isdir(save_path):
-    for f in os.listdir():
-        os.unlink(f)
-    os.rmdir(save_path)
-
-dataset = mutators.attach_pubmed_genes(dataset, "gene2pubmed", max_cpu=1)
+from abstract2gene.dataset import bioc2dataset, dataset_path, mutators
 
 
 def clear_save(path):
     if not os.path.isdir(path):
         return
 
-    print(path)
     for f in os.listdir(path):
         abs_f = os.path.join(path, f)
-        print(f, abs_f)
         if os.path.isdir(abs_f):
             clear_save(abs_f)
         else:
@@ -30,5 +21,25 @@ def clear_save(path):
     os.rmdir(path)
 
 
+save_path = dataset_path("bioc_checkpoint")
 clear_save(save_path)
+dataset = bioc2dataset(range(10), max_cpu=60)
 dataset.save_to_disk(save_path, max_shard_size="250MB")
+
+# dataset = datasets.load_from_disk(save_path)
+dataset = mutators.attach_references(dataset)
+
+clear_save(save_path)
+save_path = dataset_path("bioc")
+dataset.save_to_disk(save_path, max_shard_size="250MB")
+
+dataset.push_to_hub(
+    "dconnell/pubtator3_abstracts",
+)
+
+card_data = DatasetCardData(language="en")
+card = DatasetCard.from_template(
+    card_data, template_path="abstract2gene/dataset/README.md"
+)
+
+card.push_to_hub("dconnell/pubtator3_abstracts")
