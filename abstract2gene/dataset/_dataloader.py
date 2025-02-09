@@ -733,15 +733,11 @@ def load_dataset(
         labels is returned.
 
     """
-    import json
+    from abstract2gene.dataset import mutators
 
-    path = os.path.join(data_dir, name) if data_dir else dataset_path(name)
-    with open(os.path.join(path, "symbols.json"), "r") as f:
-        symbols = json.load(f)
-
-    return from_huggingface(
-        datasets.load_from_disk(path), labels=labels, symbols=symbols, **kwds
-    )
+    dataset = datasets.load_from_disk(path)
+    symbols = mutators.get_gene_symbols(dataset)
+    return from_huggingface(dataset, labels=labels, symbols=symbols, **kwds)
 
 
 def mock_dataloader(

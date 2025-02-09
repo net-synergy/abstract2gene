@@ -18,7 +18,6 @@ adequate.
 We can use this example to compare embeddings produced by multiple models.
 """
 
-import json
 import os
 
 import igraph as ig
@@ -30,6 +29,7 @@ from datasets import load_from_disk
 from sentence_transformers import SentenceTransformer
 
 from abstract2gene.data import dataset_path, model_path
+from abstract2gene.dataset import mutators
 
 DATASET = "bioc_small_embeddings"
 DATASET = "bioc_small"
@@ -42,8 +42,7 @@ name = "specter-finetuned_and_trained"
 
 ## Load data
 dataset = load_from_disk(dataset_path(DATASET))
-with open(os.path.join(dataset_path(DATASET), "symbols.json"), "r") as f:
-    symbols = json.load(f)
+symbols = mutators.get_gene_symbols(dataset)
 
 embed = SentenceTransformer(MODEL)
 ## Filter to most common genes
