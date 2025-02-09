@@ -301,15 +301,15 @@ def _parse_doc(doc) -> dict[str, Any] | None:
             offsets[i] -= sum(len(text) + 1 for text in abs_text[:i])
 
         annotations = [
-            annotation
+            (identifier, meta)
             for offset, abstract in zip(offsets, abstract_elements)
-            for annotation in _collect_annotations(abstract, offset)
+            for identifier, meta in _collect_annotations(abstract, offset)
+            if meta["type"].lower() in ANN_TYPES
         ]
 
         ann_data: dict[str, set[str]] = {k: set() for k in ANN_TYPES}
         for identifier, meta in annotations:
-            if meta["type"].lower() in ann_data:
-                ann_data[meta["type"].lower()].add(identifier)
+            ann_data[meta["type"].lower()].add(identifier)
 
         _, meta_data = zip(*annotations)
 
