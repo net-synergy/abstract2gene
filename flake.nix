@@ -61,11 +61,6 @@
               abi = "manylinux_2_35";
               platform = "x86_64";
 
-              # src = prev.fetchPypi {
-              #   inherit pname version format dist python abi platform;
-              #   sha256 = "";
-              # };
-
               src = pkgs.fetchurl {
                 url =
                   "https://files.pythonhosted.org/packages/f3/bd/12e8504531b9b2049535e566a7ddf497f01fe236bc1fe58249509bae7313/${pname}-${version}-${dist}-${python}-${abi}_${platform}.whl";
@@ -73,6 +68,26 @@
               };
 
               propagatedBuildInputs = [ prev.igraph prev.numpy ];
+            });
+
+            pubmedparser2 = (prev.buildPythonPackage rec {
+              pname = "pubmedparser2";
+              version = "2.1.2";
+              format = "wheel";
+
+              dist = "cp312";
+              python = "cp312";
+              abi = "manylinux_2_35";
+              platform = "x86_64";
+
+              src = pkgs.fetchurl {
+                url =
+                  "https://files.pythonhosted.org/packages/43/9c/bed728b6ba9c31ff622bbc151c5a9d6ed3c0097a1c8f954292dc04a36078/${pname}-${version}-${dist}-${python}-${abi}_${platform}.whl";
+                sha256 =
+                  "6ed156ad7e607c183d46c2f25acf23cb153d8d48ef0a5ffe061c041408bacb8e";
+              };
+
+              propagatedBuildInputs = [ prev.appdirs ];
             });
           };
         };
