@@ -7,15 +7,23 @@ Since these collect data from foreign sources, many of the functions depend on
 downloading large files.
 """
 
-__all__ = ["attach_pubmed_genes", "get_gene_symbols", "mask_abstract"]
+__all__ = [
+    "attach_pubmed_genes",
+    "get_gene_symbols",
+    "mask_abstract",
+    "attach_references",
+]
 
+import os
 from typing import Any, Sequence
 
 import datasets
 import numpy as np
 import pandas as pd
+import pubmedparser
+import pubmedparser.ftp
 
-from abstract2gene.data import PubmedDownloader
+from abstract2gene.data import PubmedDownloader, default_cache_dir
 
 
 def attach_pubmed_genes(
@@ -165,4 +173,79 @@ def mask_abstract(
         batched=False,
         num_proc=max_cpu,
         fn_kwargs={"ann_types": ann_type, "mask_token": mask_token},
+    )
+
+
+def attach_references(
+    dataset: datasets.Dataset, max_cpu: int = 1, batch_size: int = 1000
+) -> datasets.Dataset:
+    """Add a reference feature to the dataset.
+
+    Uses the references found in PubMed.
+
+    Note: This will download a lot of data.
+    """
+
+    def add_references(
+        examples: dict[str, Any], table: pd.DataFrame
+    ) -> dict[str, Any]:
+        def get_references(pmid: int) -> list[str]:
+            start = np.searchsorted(table["from"], pmid)
+            end = start
+            while (end < table.shape[0]) and (table["from"].iloc[end] == pmid):
+                end += 1
+
+            return list(table["to"].iloc[start:end])
+
+        return {
+            "reference": [get_references(pmid) for pmid in examples["pmid"]]
+        }
+
+    files = pubmedparser.ftp.download("all")
+    reference_path = "/".join(
+        [
+            "/PubmedArticle",
+            "PubmedData",
+            "ReferenceList",
+            "Reference",
+            "ArticleIdList",
+            "ArticleId",
+            "[@IdType='pubmed']",
+        ]
+    )
+    structure = {
+        "root": "//PubmedArticleSet",
+        "key": "/PubmedArticle/MedlineCitation/PMID",
+        "Reference": reference_path,
+    }
+    data_dir = default_cache_dir("pubmedparser")
+
+    # Files that pubmedparser says are malformed.
+    bad_files = ["pubmed25n0953.xml.gz"]
+    files = [f for f in files if os.path.basename(f) not in bad_files]
+
+    print("Parsing XML files...")
+    results = pubmedparser.read_xml(files, structure, data_dir, n_threads=32)
+
+    print("Loading table...")
+    table = pd.read_table(
+        os.path.join(results, "Reference.tsv"),
+        sep="\t",
+        header=None,
+        skiprows=1,
+        names=["from", "to"],
+        dtype={"from": int, "to": str},
+    ).sort_values("from")
+
+    # There's a small number of non-PMID values that get in there.
+    table = table[table["to"].str.contains(r"^\d*$")]
+    table["to"] = table["to"].transform(int)
+
+    return dataset.map(
+        add_references,
+        batched=True,
+        batch_size=batch_size,
+        num_proc=max_cpu,
+        fn_kwargs={"table": table},
+        desc="Attaching references",
     )
