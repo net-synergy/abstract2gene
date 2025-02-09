@@ -84,6 +84,31 @@ def bioc2dataset(
 
     """
 
+    def remove_multi_genes(
+        examples: dict[str, list[Any]],
+    ) -> dict[str, list[Any]]:
+        """Remove genes that are recorded with multiple gene IDs.
+
+        Some genes in the BioCXML files are of the form "1234;567", not sure
+        how to handle them so just removing instead of selecting an ID at
+        random.
+        """
+
+        def is_int(gene_id: str) -> bool:
+            try:
+                int(gene_id)
+            except ValueError:
+                return False
+
+            return True
+
+        return {
+            "gene": [
+                [gid for gid in genes if is_int(gid)]
+                for genes in examples["gene"]
+            ]
+        }
+
     def repack_labels(
         examples: dict[str, list[Any]],
         id2idx: dict[str, dict[str, int]],
@@ -106,6 +131,12 @@ def bioc2dataset(
                 tar_paths, n_files, max_cpu
             ).items()
         }
+    ).map(
+        remove_multi_genes,
+        batched=True,
+        batch_size=batch_size,
+        num_proc=max_cpu,
+        desc="Remove invalid gene IDs",
     )
 
     key = list(dataset.keys())[0]

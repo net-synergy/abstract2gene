@@ -7,7 +7,7 @@ Since these collect data from foreign sources, many of the functions depend on
 downloading large files.
 """
 
-__all__ = ["attach_pubmed_genes"]
+__all__ = ["attach_pubmed_genes", "get_gene_symbols"]
 
 from typing import Any
 
@@ -87,3 +87,36 @@ def attach_pubmed_genes(
         num_proc=max_cpu,
         desc="Attach pubmed genes",
     )
+
+
+def get_gene_symbols(dataset: datasets.Dataset) -> list[str]:
+    """Grab gene symbols from PubMed's gene_info file.
+
+    Returns a list matching the ith symbol to gene label i.
+    """
+
+    def read_symbol_table() -> pd.DataFrame:
+        pubmed_downloader = PubmedDownloader()
+        pubmed_downloader.files = ["gene_info.gz"]
+        files = pubmed_downloader.download()
+
+        return pd.read_table(
+            files[0], usecols=["GeneID", "Symbol"]
+        ).sort_values("GeneID")
+
+    if isinstance(dataset, datasets.dataset_dict.DatasetDict):
+        key = list(dataset.keys())[0]
+        features = dataset[key].features.copy()
+    else:
+        features = dataset.features.copy()
+
+    gene_ids = [int(gid) for gid in features["gene"].feature.names]
+    symbol_table = read_symbol_table()
+    symbol_table = symbol_table.merge(
+        pd.DataFrame({"GeneID": gene_ids}), how="right", on="GeneID"
+    )
+    symbol_table["Symbol"] = symbol_table["Symbol"].fillna(
+        symbol_table["GeneID"].transform(str)
+    )
+
+    return symbol_table["Symbol"].array.tolist()
