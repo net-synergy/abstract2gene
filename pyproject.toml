@@ -19,7 +19,6 @@ dependencies = [
     "optax>=0.2.4",
     "optuna>=4.2.0",
     "pandas>=2.2.3",
-    "peft>=0.14.0",
     "plotnine>=0.14.5",
     "pubmedparser2>=2.1.2",
     "scikit-learn>=1.6.1",
