@@ -13,8 +13,6 @@ from abstract2gene.data import dataset_path, model_path
 
 DATASET = "bioc_small"
 
-MAX_GENE_TESTS = 100
-
 os.environ["XLA_FLAGS"] = (
     "--xla_gpu_enable_triton_softmax_fusion=true "
     "--xla_gpu_enable_triton_gemm=true "
@@ -32,14 +30,13 @@ os.environ.update(
 
 encoder = SentenceTransformer(model_path("specter-abstract-genes"))
 
-labels = "gene2pubtator"
 dataset = datasets.load_from_disk(dataset_path(DATASET))
-genes = np.bincount(jax.tree.leaves(dataset[labels]))
+genes = np.bincount(jax.tree.leaves(dataset["gene"]))
 mask = genes > np.quantile(genes, 0.75)
 gene_ids = np.arange(len(genes))[mask]
 
 dataset = dataset.filter(
-    lambda example: any(np.isin(example["gene2pubtator"], gene_ids)),
+    lambda example: any(np.isin(example["gene"], gene_ids)),
     num_proc=10,
 ).map(
     lambda example: {"embedding": encoder.encode(example["abstract"])},
@@ -67,16 +64,8 @@ data.reset_rngs()
 tx = optax.adam(learning_rate=1e-4)
 trainer = a2g.model.Trainer(model, data, tx)
 results = trainer.train(max_epochs=30)
-data.update_params(template_size=32)
-df = trainer.test()
-trainer.plot(df, "multi_layer_large_templates.svg")
 
-# Coarse dimension search
-dims_in = data.n_features
-for d in range(1, 20, 2):
-    data.reset_rngs()
-    model_name = f"random_weights_{d}_dims"
-    model = a2g.model.MultiLayer(name=model_name, seed=0, dims=(dims_in, d))
-    trainer = a2g.model.Trainer(model, data, tx)
-    results = trainer.train()
-    trainer.test()
+## TEMP: Will fix in next commit.
+# data.update_params(template_size=32)
+# df = trainer.test()
+# trainer.plot(df, "multi_layer_large_templates.svg")

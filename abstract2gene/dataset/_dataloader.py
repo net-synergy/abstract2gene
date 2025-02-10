@@ -6,11 +6,9 @@ __all__ = [
     "DataLoader",
     "DataLoaderDict",
     "from_huggingface",
-    "load_dataset",
     "mock_dataloader",
 ]
 
-import os
 from collections import UserDict
 from typing import Iterable, Sequence, TypeAlias
 
@@ -20,7 +18,7 @@ import jax.numpy as jnp
 import numpy as np
 import scipy as sp
 
-from ..typing import Batch, Names, Samples
+from ..typing import Batch, Samples
 
 InLabels: TypeAlias = sp.sparse.csc_array
 
@@ -190,7 +188,7 @@ class DataLoader:
 
     Example:
     -------
-    data = load_dataset("path/to/dataset")
+    data = from_huggingface(HF_dataset)
     for batch in data.batch():
        train_step(model, batch)
 
@@ -205,9 +203,6 @@ class DataLoader:
         self,
         samples: np.ndarray,
         labels: InLabels,
-        sample_names: Names,
-        label_ids: Names,
-        label_symbols: Names,
         seed: int = 0,
     ):
         """Construct a DataLoader.
@@ -218,24 +213,12 @@ class DataLoader:
             Should be in the form n_samples x n_features
         labels : 2d sparse array (csc form)
             Should be in the form n_samples x n_labels.
-        sample_names : list[str]
-            One dimensional array of feature names (such as PMIDs)
-        label_ids, label_symbols : list[str]
-            Names for the label columns. IDs should be unique and consistent
-            (such as NCBI Gene IDs). Symbols can be more flexible. The symbols
-            are intended to be meaningful to a human whereas IDs are intended
-            to be used to link between datasets.
         seed : int, default 0
             The seed for the random number generator.
 
         """
-        self._is_training = True
-
         self._samples = samples
-        self._sample_names = sample_names
         self._labels = labels
-        self._label_ids = label_ids
-        self._label_symbols = label_symbols
         self._template_mask: np.ndarray = np.asarray([])
 
         self._seed = seed
@@ -273,58 +256,13 @@ class DataLoader:
         if self._all_labels:
             self._labels_per_batch = self.n_labels
 
-        # If template size or labels per batch change, this will change the
-        # shape of the templates so they need to be recalculated.
-        if not self.is_training:
-            self.eval()
-
-    @property
-    def is_training(self) -> bool:
-        """Whether the dataset is in training mode or eval mode."""
-        return self._is_training
-
     @property
     def samples(self):
-        if self.is_training:
-            return self._samples
-
-        return self._samples[self._sample_mask, :]
-
-    @property
-    def sample_names(self):
-        if self.is_training:
-            return self._sample_names
-
-        return [
-            name
-            for mask, name in zip(self._sample_mask, self._sample_names)
-            if mask
-        ]
-
-    @property
-    def templates(self) -> Samples:
-        if not self.is_training:
-            # Most not be none if in eval mode.
-            return self._samples[self._template_idx, :]
-
-        raise RuntimeError("Dataset not in evaluation mode.")
+        return self._samples
 
     @property
     def labels(self) -> InLabels:
-        if self.is_training:
-            labels = self._labels
-        else:
-            labels = self._labels[self._sample_mask, :]
-
-        return labels[:, self._label_idx]
-
-    @property
-    def label_ids(self) -> Names:
-        return [self._label_ids[i] for i in self._label_idx]
-
-    @property
-    def label_symbols(self) -> Names:
-        return [self._label_symbols[i] for i in self._label_idx]
+        return self._labels[:, self._label_idx]
 
     @property
     def batch_size(self) -> int:
@@ -390,35 +328,17 @@ class DataLoader:
             self.n_samples,
             self.n_features,
             self.n_labels,
-            "train" if self.is_training else "eval",
         )
-        return "[samples: {}, features: {}, labels: {}, mode: {}]".format(
-            *data
-        )
+        return "[samples: {}, features: {}, labels: {}]".format(*data)
 
     def __getitem__(self, key) -> DataLoader:
         new = DataLoader(
             self.samples[key, :],
             self._labels[key, :],
-            self.sample_names[key],
-            self._label_ids,
-            self._label_symbols,
             self._seed,
         )
         new._update_params(self._bs, self._ts, self._labels_per_batch)
         return new
-
-    def batch_label_name(self) -> Names:
-        """Return the current batch's label name."""
-        return self._batch_label_names
-
-    def batch_sample_names(self) -> Names:
-        """Return the names for the batch's samples."""
-        return self._batch_sample_names
-
-    @property
-    def batch_label_indices(self) -> np.ndarray:
-        return self._batch_label_indices
 
     def batch(self) -> Iterable[Batch]:
         """Generate batches of samples to train on."""
@@ -427,17 +347,10 @@ class DataLoader:
             label_pool.shape[0] // self.labels_per_batch
         )
         label_pool = label_pool[:cut].reshape((-1, self.labels_per_batch))
-        if self.is_training:
-            labels = self._labels
-        else:
-            labels = self._labels[self._sample_mask, :]
+        labels = self._labels
 
         batch_n = 0
         for batch_labels in label_pool:
-            self._batch_label_names = [
-                self._label_symbols[idx] for idx in batch_labels
-            ]
-            self._batch_label_indices = batch_labels
             for batch in self._split_labels(labels[:, batch_labels]):
                 yield batch
                 batch_n += 1
@@ -449,7 +362,7 @@ class DataLoader:
         self,
         labels: sp.sparse.sparray,
     ) -> Iterable[Batch]:
-        ts = self.template_size if self.is_training else 0
+        ts = self.template_size
         bs = self.batch_size
 
         label_samples = [
@@ -485,9 +398,6 @@ class DataLoader:
                 pool[p : p + n] for pool, p, n in zip(samples, ptr, n_draw)
             ]
             ptr = [p + n for p, n in zip(ptr, n_draw)]
-            self._batch_sample_names = [
-                self.sample_names[draw] for draw in np.concat(draws)
-            ]
 
             yield (
                 jnp.concat(
@@ -499,62 +409,13 @@ class DataLoader:
                 jnp.concat(tuple(labels[draw, :].todense() for draw in draws)),
             )
 
-    def eval(self):
-        """Set the datasets mode to eval.
-
-        In eval mode, the dataset splits out a preselected set of samples for
-        each template and places them in the templates parameter.
-
-        The template samples are removed from the samples parameter and `batch`
-        will not return templates along with samples.
-
-        Use `DataLoader.train` to reverse this process.
-        Use `DataLoader.is_training` to determine the current mode.
-
-        FIXME: eval mode is likely not working right. At the very least it is
-        currently much faster to pass each batches template through the model
-        than run the eval mode template through the model once (which is
-        weird).
-
-        """
-        raise NotImplementedError
-        ts = self.template_size
-
-        labels = self._labels[:, self._label_idx]
-        n_samples = labels.sum(axis=0)
-        training_mask = labels
-        ones = np.ones((ts,), dtype=np.bool)
-        for idx in range(training_mask.shape[1]):
-            zeros = np.zeros((n_samples[idx] - ts,), dtype=np.bool)
-            mask = self._rng.permutation(np.concat((ones, zeros)))
-            labeled = labels[:, [idx]].toarray().squeeze()
-            training_mask[labeled, idx] = mask
-
-        samples = np.arange(labels.shape[0])
-        self._template_idx = np.fromiter(
-            (
-                idx
-                for col in range(training_mask.shape[1])
-                for idx in samples[training_mask[:, [col]].toarray().squeeze()]
-            ),
-            dtype=np.dtype(int),
-            count=(ts * training_mask.shape[1]),
-        )
-        self._sample_mask = np.logical_not(training_mask.sum(axis=1))
-        self._is_training = False
-
-    def train(self):
-        self._is_training = True
-
 
 def from_huggingface(
     dataset: datasets.Dataset,
     samples: str = "embedding",
-    sample_id: str = "pmid",
-    labels: str = "gene2pubtator",
-    symbols: list[str] = [],
+    labels: str = "gene",
     max_sample_labels: int = 10,
-    split: dict[str, float] = {"train": 0.8, "test": 0.1, "validate": 0.1},
+    split: dict[str, float] = {"train": 0.9, "validate": 0.1},
     seed: int = 0,
     return_unlabeled: bool = False,
     **kwds,
@@ -569,22 +430,18 @@ def from_huggingface(
         The dataset to convert.
     samples : str, default "embedding"
         The name of the dataset feature to use as samples.
-    sample_id : str, default "pmid"
-        The name of the dataset feature to use as IDs for the samples.
     labels : str, default "gene2pubtator"
         The name of the dataset feature to use as labels. This should have the
         dataset.Feature type dataset.ClassLabel. This will be used for both
         label values and their symbols. In addition to "gene2pubtator",
         "gene2pubmed" is a useful option.
-    symbols : list[str]
-        TEMPORARY A list of the label's symbols. Should be better integrated
-        into the huggingface dataset.
     max_sample_labels : int, default 10
         Drop samples with more than `max_sample_labels` labels. With too many
         labels, the sample cannot be specific to a single label and therefore
         is expected to not be labeled well.
     split : dict[str, float]
-        Key-value pairs of
+        Key-value pairs of proportions for each split. Sum of proportions
+        should equal 1.
     seed : int, 0
         Random seed to initialize RNG used to split labels and generate a seed
         to pass to the DataLoader.
@@ -641,11 +498,7 @@ def from_huggingface(
         )
         mask[label_mask] = rng.permutation(mask[label_mask])
 
-        return {
-            "train": mask == 1,
-            "test": mask == 2,
-            "validate": mask == 3,
-        }
+        return {k: mask == i + 1 for i, k in enumerate(split)}
 
     rng: np.random.Generator = np.random.default_rng(seed)
     new_seed = rng.integers(9999, size=len(split)).astype(int)
@@ -662,27 +515,14 @@ def from_huggingface(
     if return_unlabeled:
         unlabeled = feats[np.logical_not(labeled)]
 
-    names = dataset.features[labels].feature.names
-    # symbols = dataset.features[labels].feature.symbols
     feats = feats[labeled, :]
     splabels = splabels[labeled, :]
-
-    sample_names = dataset[sample_id]
-    if not isinstance(sample_names[0], str):
-        sample_names = [str(name) for name in sample_names]
 
     dataloaders = DataLoaderDict(
         {
             k: DataLoader(
                 feats,
                 splabels[:, label_masks[k]],
-                sample_names,
-                [name for (mask, name) in zip(label_masks[k], names) if mask],
-                [
-                    symbol
-                    for (mask, symbol) in zip(label_masks[k], symbols)
-                    if mask
-                ],
                 seed=sd,
             )
             for sd, k in zip(new_seed, split)
@@ -691,53 +531,6 @@ def from_huggingface(
     )
 
     return (dataloaders, unlabeled)
-
-
-# TODO: Once the embeddings dataset is uploaded to huggingface, switch from
-# datasets.load_from_disk to datasets.load_dataset and let hf handle all
-# caching,
-def load_dataset(
-    name: str,
-    data_dir: str | None = None,
-    labels: str = "gene2pubtator",
-    **kwds,
-) -> tuple[DataLoaderDict, jax.Array | None]:
-    """Load a dataset.Dataset and convert it to a DataLoader.
-
-    Wrapper around `dataset.load_dataset` and `from_huggingface`. For more
-    control (such as filtering the dataset before sending to the DataLoader),
-    use `dataset.load_dataset` and preprocess the dataset, then call
-    `abstract2gene.dataset.from_huggingface`. This also does not expose all
-    options availble to `from_huggingface`, for more flexibility call directly.
-
-    Parameters
-    ----------
-    name : str
-        Name of the data set to read.
-    data_dir : Optional str
-        Where to search for the dataset. Defaults to
-        `abstract2gene.storage.default_data_dir` with "datasets" subdir
-        appended to it.
-    labels : str, default "gene2pubtator"
-        The name of the dataset feature to use for labels. Feature must have
-        type dataset.ClassLabel.
-    **kwds :
-        Keyword arguments to be forwarded to the DataLoader constructor.
-
-    Returns
-    -------
-    dataloader : dict[str, DataLoader]
-        A dictionary of DataLoaders for each key in split.
-    unlabeled_samples : jax.Array, optional
-        If return_unlabeled is True, the array of all samples that had no
-        labels is returned.
-
-    """
-    from abstract2gene.dataset import mutators
-
-    dataset = datasets.load_from_disk(path)
-    symbols = mutators.get_gene_symbols(dataset)
-    return from_huggingface(dataset, labels=labels, symbols=symbols, **kwds)
 
 
 def mock_dataloader(
@@ -783,9 +576,6 @@ def mock_dataloader(
             k: DataLoader(
                 samples,
                 labels[:, v[0] : v[1]],
-                [str(i) for i in range(n_samples)],
-                [str(i) for i in range(v[0], v[1])],
-                [str(i) for i in range(v[0], v[1])],
                 0,
             )
             for k, v in split.items()

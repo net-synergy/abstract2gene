@@ -78,8 +78,6 @@ class Trainer:
 
             self.write_metrics("train", epoch)
 
-        self.data["train"].train()
-        self.data["validate"].train()
         self.model.train()
 
         window_size = 20
