@@ -6,16 +6,18 @@ __all__ = [
     "Model",
 ]
 
+from typing import Sequence
+
 import jax
 import jax.numpy as jnp
+import numpy as np
 from flax import nnx
 from flax.nnx import rnglib
 from jax.typing import DTypeLike
+from sentence_transformers import SentenceTransformer
 
-from abstract2gene.typing import Names, Samples
-
-RESULT_TEMPLATE = "results/{name}_validation.tsv"
-RESULTS_TABLE = "results/model_comparison.tsv"
+from abstract2gene.dataset import DataLoaderDict
+from abstract2gene.typing import Samples
 
 
 class Model(nnx.Module):
@@ -40,56 +42,55 @@ class Model(nnx.Module):
 
     def __init__(
         self,
-        name: str = "",
+        encoder: SentenceTransformer | None = None,
     ):
         """Initialize a model.
 
         Parameters
         ----------
-        name : str, optional
-            A name to give to the model. This is only important for determining
-            where to store test results and not needed for prediction.
+        encoder : SentenceTransformer, Optional
+            If set, this will be used to produce embeddings when strings are
+            passed in.
 
         """
-        self.name = name
-        self.result_file = RESULT_TEMPLATE.format(name=name)
         self.templates: Samples | None = None
-        self.label_names: Names | None = None
+        self.label_indices: np.ndarray | None = None
+        self.encoder: SentenceTransformer | None = None
 
     def __call__(self, x: jax.Array) -> jax.Array:
         raise NotImplementedError
 
-    @property
-    def name(self) -> str:
-        return self._name
-
-    @name.setter
-    def name(self, value: str):
-        self._name = value
-        self.result_file = RESULT_TEMPLATE.format(name=value)
-
-    def attach_templates(self, templates: Samples, names: Names) -> None:
-        """Add the templates for the model.
+    def attach_templates(
+        self, dataset: DataLoaderDict, template_size: int | None = None
+    ) -> None:
+        """Add a dataset's templates to the model.
 
         These are used for prediction---outside of training. During training,
         templates are created with batches by the dataset.
-
-        Note the dataset should be of class `DataLoader` not `DataLoaderDict`.
         """
         if self.templates is not None:
             print("Templates already attached. Old templates being replaced.")
 
-        self.templates = self(templates)
-        self.label_names = names
+        templates, indices = dataset.get_templates(template_size)
+        templates = self(templates)
+        self.templates = dataset.fold_templates(templates).mean(axis=1)
 
-    def predict(self, x: Samples, templates: Samples | None) -> jax.Array:
+        self.label_indices = indices
+
+    def predict(
+        self,
+        x: Samples | str | Sequence[str],
+        templates: Samples | None = None,
+    ) -> jax.Array:
         """Calculate similarity of samples `x` to templates `template`.
 
         Parameters
         ----------
-        x : ArrayLike
-            Either a row vector of a single sample or a matrix where each row
-            is a sample.
+        x : ArrayLike, str, Sequence[str]
+            Can be embeddings in the form of a row vector of a single sample or
+            a matrix where each row is a sample. Or can be strings to be passed
+            to the encoder to create embeddings (requires encoder to be
+            attached).
         templates : ArrayLike, optional
             A set of templates to compare x to. If None, templates fixed to the
             model will be used.
@@ -100,10 +101,6 @@ class Model(nnx.Module):
             A n_samples x n_templates matrix with a similarity score between 0
             and 1 for each sample, template pair.
 
-        See Also
-        --------
-        `model.label_names`
-
         """
         templates = templates if templates is not None else self.templates
 
@@ -112,6 +109,17 @@ class Model(nnx.Module):
                 """Must attach templates to model or explicitly pass templates.
                 See `model.attach_templates`."""
             )
+
+        if isinstance(x, str):
+            x = [x]
+
+        if not isinstance(x, jax.Array):
+            if self.encoder is None:
+                raise ValueError(
+                    """Must attach an encoder to predict from strings."""
+                )
+
+            x = self.encoder.encode(x)
 
         return nnx.sigmoid(self.logits_fn(self(x), templates))
 
@@ -134,18 +142,7 @@ class LinearTemplate(nnx.Module):
         self.bias = nnx.Param(initializer(bias_key, (1,), dtype))
         self.templates: Samples | None = None
 
-    def fix(self, templates: Samples):
-        self.templates = templates
-
-    def __call__(self, x: Samples, templates: Samples | None):
-        templates = templates if templates is not None else self.templates
-
-        if templates is None:
-            raise ValueError(
-                "No templates attached to this layer. Either pass templates"
-                + "in or attach with the fix method."
-            )
-
+    def __call__(self, x: Samples, templates: Samples):
         return (x @ templates.T) + self.bias.value
 
 
@@ -155,8 +152,8 @@ class RawSimilarity(Model):
     Prediction is the dot product between the samples and templates.
     """
 
-    def __init__(self, name: str, seed: int):
-        super().__init__(name)
+    def __init__(self, seed: int):
+        super().__init__()
         rngs = nnx.Rngs(seed)
         self.template = LinearTemplate(rngs=rngs)
 
@@ -172,7 +169,7 @@ class RawSimilarity(Model):
 
 
 class MultiLayer(Model):
-    def __init__(self, name: str, dims: tuple[int, ...], seed: int):
+    def __init__(self, dims: tuple[int, ...], seed: int):
         """Multi-layer perceptron for predicting labels.
 
         Adds dense layers after the embedding.
@@ -182,7 +179,7 @@ class MultiLayer(Model):
         of the output. The true output dimensionality is determine by the
         number of rows in templates.
         """
-        super().__init__(name)
+        super().__init__()
         rngs = nnx.Rngs(seed)
         self.layers = [
             nnx.Linear(dims[i], dims[i + 1], rngs=rngs)
@@ -202,7 +199,7 @@ class MultiLayer(Model):
 
 
 class MLPExtras(Model):
-    def __init__(self, name: str, dims: tuple[int, ...], seed: int):
+    def __init__(self, dims: tuple[int, ...], seed: int):
         """Multi-layer perceptron for predicting labels.
 
         Like MultiLayer but adds batch normalization to dense layers. This is
@@ -216,7 +213,7 @@ class MLPExtras(Model):
         of the output. The true output dimensionality is determine by the
         number of rows in templates.
         """
-        super().__init__(name)
+        super().__init__()
         rngs = nnx.Rngs(seed)
         self.template = LinearTemplate(rngs=rngs)
         self.layers = [
@@ -236,7 +233,3 @@ class MLPExtras(Model):
 
     def logits_fn(self, x: Samples, templates: Samples):
         return self.template(x, templates)
-
-
-class Attention(Model):
-    pass

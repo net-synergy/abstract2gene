@@ -27,6 +27,7 @@ class DataLoaderDict(UserDict):
     def __init__(
         self,
         mapping: dict[str, DataLoader],
+        rng: np.random.Generator,
         batch_size: int = 64,
         template_size: int = 32,
         labels_per_batch: int = -1,
@@ -38,6 +39,8 @@ class DataLoaderDict(UserDict):
         ----------
         mapping : dict[str, DataLoader]
             The dictionary of DataLoaders to handle.
+        rng : numpy random generator
+            A random generator.
         batch_size : int, default 64
             How many samples should make up a batch.
         template_size : int, default 32
@@ -57,6 +60,7 @@ class DataLoaderDict(UserDict):
 
         """
         super().__init__(mapping)
+        self._rng = rng
         self._batch_size = batch_size
         self._template_size = template_size
         self.labels_per_batch = labels_per_batch
@@ -146,7 +150,66 @@ class DataLoaderDict(UserDict):
         for dl in self.data.values():
             dl.reset_rng()
 
-    def split_batch(self, batch: Samples) -> tuple[Samples, Samples]:
+    def get_templates(
+        self, template_size: int | None = None
+    ) -> tuple[jax.Array, np.ndarray]:
+        """Pull samples at random for creating templates.
+
+        If template_size is set this many samples will be pulled for each
+        template. Otherwise use self.template_size.
+
+        In most cases this function should be used indirectly by supplying a
+        DataLoaderDict to a model's attach_templates function.
+
+        Returns
+        -------
+        template_samples : jax.Array
+            A 2d Array of size (n_templates x template_size) x n_features. The
+            number of templates is a function of the number of labels with at
+            least template_size samples.
+        label_indices : np.ndarray
+            A list of the label indices associated with each template in
+            template_samples. This (and by extension template_samples) will be
+            sorted in ascending order. If there's enough samples for each label
+            this will be 0--n_labels. (Useful for associated with a HuggingFace
+            dataset using the same indices as this loader's data.)
+
+        See Also
+        --------
+        DataLoaderDict.fold_templates; to fold into a 3d Array.
+        Model.attach_templates: uses this function to fix templates to a model.
+
+        """
+        template_size = template_size or self.template_size
+
+        key = list(self.data.keys())[0]
+        samples = self.data[key].samples
+
+        labels = sp.sparse.hstack([dl._labels for dl in self.data.values()])
+        indices = np.concat([dl.label_indices for dl in self.data.values()])
+
+        sort_idx = np.argsort(indices)
+        labels = labels[:, sort_idx]
+        indices = indices[sort_idx]
+
+        mask = labels.sum(axis=0) > template_size
+        labels = labels[:, mask].toarray()
+        indices = indices[mask]
+
+        rows = np.arange(labels.shape[0])
+        templates = np.vstack(
+            [
+                samples[self._rng.permuted(rows[labs])[:template_size], :]
+                for labs in labels.T
+            ],
+            dtype=samples.dtype,
+        )
+
+        return (jnp.asarray(templates), indices)
+
+    def split_batch(
+        self, batch: Samples, template_size: int | None = None
+    ) -> tuple[Samples, Samples]:
         """Split the samples of a batch into templates and samples.
 
         The first `labels_per_batch * template_size` columns of a batch's
@@ -165,10 +228,11 @@ class DataLoaderDict(UserDict):
             The samples.
 
         """
+        template_size = template_size or self.template_size
         # Since self.labels_per_batch may be -1 (for all labels) can't use the
         # variable so calculate n labels instead.
-        n_labels = (batch.shape[0] - self.batch_size) // self.template_size
-        n_temp_rows = n_labels * self.template_size
+        n_labels = (batch.shape[0] - self.batch_size) // template_size
+        n_temp_rows = n_labels * template_size
         templates = batch[:n_temp_rows, :]
         samples = batch[n_temp_rows:, :]
         return (templates, samples)
@@ -203,6 +267,7 @@ class DataLoader:
         self,
         samples: np.ndarray,
         labels: InLabels,
+        label_indices: np.ndarray,
         seed: int = 0,
     ):
         """Construct a DataLoader.
@@ -213,6 +278,8 @@ class DataLoader:
             Should be in the form n_samples x n_features
         labels : 2d sparse array (csc form)
             Should be in the form n_samples x n_labels.
+        label_indices : np.ndarray
+            The indices of the label.
         seed : int, default 0
             The seed for the random number generator.
 
@@ -220,6 +287,8 @@ class DataLoader:
         self._samples = samples
         self._labels = labels
         self._template_mask: np.ndarray = np.asarray([])
+
+        self._ext_label_indices = label_indices
 
         self._seed = seed
         self._rng: np.random.Generator = np.random.default_rng(seed)
@@ -294,6 +363,14 @@ class DataLoader:
             "Set the labels per batch through the DataLoaderDict class"
         )
 
+    @property
+    def label_indices(self) -> np.ndarray:
+        return self._ext_label_indices
+
+    @label_indices.setter
+    def label_indices(self):
+        raise RuntimeError("Label indices cannot be modified.")
+
     def reset_rng(self, seed: int | None = None) -> None:
         """Reset the RNG to the original seed.
 
@@ -335,6 +412,7 @@ class DataLoader:
         new = DataLoader(
             self.samples[key, :],
             self._labels[key, :],
+            self.label_indices,
             self._seed,
         )
         new._update_params(self._bs, self._ts, self._labels_per_batch)
@@ -504,7 +582,7 @@ def from_huggingface(
     new_seed = rng.integers(9999, size=len(split)).astype(int)
     splabels = to_sparse_labels(dataset, labels)
     label_masks = split_labels(splabels, split, rng)
-    feats = dataset.with_format("np", columns=[samples])[samples]
+    feats = dataset.with_format("numpy", columns=[samples])[samples]
 
     over_labeled = splabels.sum(axis=1) > max_sample_labels
     splabels = splabels[np.logical_not(over_labeled), :]
@@ -523,10 +601,12 @@ def from_huggingface(
             k: DataLoader(
                 feats,
                 splabels[:, label_masks[k]],
+                np.arange(splabels.shape[1])[label_masks[k]],
                 seed=sd,
             )
             for sd, k in zip(new_seed, split)
         },
+        rng=rng,
         **kwds,
     )
 

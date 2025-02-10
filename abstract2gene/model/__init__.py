@@ -14,7 +14,9 @@ __all__ = [
     "Attention",
     "Trainer",
     "Model",
+    "test",
+    "plot",
 ]
 
 from ._models import Attention, MLPExtras, Model, MultiLayer, RawSimilarity
-from ._trainer import Trainer
+from ._trainer import Trainer, plot, test

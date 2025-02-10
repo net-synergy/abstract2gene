@@ -1,5 +1,6 @@
-__all__ = ["Trainer"]
+__all__ = ["Trainer", "test", "plot"]
 
+import datasets
 import jax.numpy as jnp
 import numpy as np
 import optax
@@ -120,156 +121,194 @@ class Trainer:
 
         return self.history
 
-    def test(
-        self,
-        batch_size: int | None = None,
-        seed: int = 0,
-        threshold: float = 0.5,
-    ) -> pd.DataFrame:
 
-        batch_size_i = self.data.batch_size
-        labels_per_batch_i = self.data.labels_per_batch
-        self.data.update_params(batch_size=batch_size, labels_per_batch=-1)
-        dataset = self.data["test"]
+def test(
+    model: Model,
+    dataset: datasets.Dataset,
+    label_name: str,
+    symbols: list[str] | None = None,
+    batch_size: int | None = None,
+    n_samples: int | None = None,
+    seed: int = 0,
+) -> pd.DataFrame:
+    """Run a model on samples from dataset and compare to ground truth.
 
-        self.model.eval()
+    Parameters
+    ----------
+    model : Model,
+        The already trained model to run.
+    dataset : datasets.Dataset
+        A testing dataset.
+    label_name : str
+        The name of the dataset feature to use as labels.
+    symbols : list[str], Optional
+        A list of symbols, should have one symbol per label. If not provided
+        the ClassLabel objects names will be used.
+    batch_size: int, Optional
+        If provided how many samples to run on the model at once. If not given,
+        run all samples together.
+    n_samples : int, Optional
+        The number of samples to run.
+    seed : int, Optional
+        A random seed used for reproducible results.
 
-        batch_labels = []
-        batch_regression = []
-        n_batches = 50
-        for i, batch in enumerate(dataset.batch()):
-            if i > n_batches:
-                break
-            templates, x = self.data.split_batch(batch[0])
-            templates = self.data.fold_templates(self.model(templates)).mean(
-                axis=1
+    Returns
+    -------
+    results : pd.Dataframe
+        A dataframe containing the predictions for a random sample of 20
+        labels.
+
+    """
+
+    def multihot(labels: list[int]) -> np.ndarray:
+        """Convert a list of integers to a multihot array.
+
+        Uses the template indices to sync with output templates.
+        """
+        return np.isin(model.label_indices, labels)  # ignore[arg-type]
+
+    if model.label_indices is None:
+        raise ValueError("Templates most be attached to model before testing.")
+
+    model.eval()
+
+    n_samples = n_samples or len(dataset)
+    batch_size = batch_size or n_samples
+    n_batches = n_samples // batch_size
+
+    batch_regression = []
+
+    mini_dataset = dataset.shuffle(seed=seed).select(n_samples)
+    abstracts = mini_dataset["abstract"]
+    titles = mini_dataset["title"]
+    for i in range(n_batches):
+        start = i * batch_size
+        samples = [
+            title + "[SEP]" + abstract
+            for title, abstract in zip(
+                titles[start : (start + batch_size)],
+                abstracts[start : (start + batch_size)],
             )
-            batch_labels.append(batch[-1])
-            batch_regression.append(self.model.predict(x, templates))
-
-        labels = jnp.concat(batch_labels, axis=0)
-        regression = jnp.concat(batch_regression, axis=0)
-
-        preds = regression > threshold
-
-        tp = jnp.logical_and(preds, labels).sum()
-        tn = jnp.logical_and(
-            jnp.logical_not(preds), np.logical_not(labels)
-        ).sum()
-        fp = jnp.logical_and(preds, np.logical_not(labels)).sum()
-        fn = jnp.logical_and(np.logical_not(preds), labels).sum()
-
-        print(f"accuracy: {(tp + tn) / preds.size}")
-        print(f"sensitivity: {tp / (tp + fp)}")
-        print(f"specificity: {tn / (tn + fn)}")
-
-        n_labels = 20
-        n_samples = 40
-        label_mask = labels.sum(axis=0) > n_samples
-        labels = labels[:, label_mask] == 1  # Convert from float to bool
-        regression = regression[:, label_mask]
-        label_names = [
-            name
-            for mask, name in zip(label_mask, dataset.batch_label_name())
-            if mask
         ]
 
-        rng = np.random.default_rng(seed=seed)
-        selected = rng.choice(labels.shape[1], n_labels)
+        batch_regression.append(model.predict(samples))
 
-        scores = np.zeros((2 * n_labels * n_samples,))
-        tags = np.tile(
-            np.concat(
-                (
-                    np.asarray(["match"]).repeat(n_samples),
-                    np.asarray(["differ"]).repeat(n_samples),
-                )
+    regression = np.concat(batch_regression, axis=0)
+    labels = np.concat([multihot(labs) for labs in mini_dataset[label_name]])
+
+    preds = regression > 0.5
+
+    tp = np.logical_and(preds, labels).sum()
+    tn = np.logical_and(jnp.logical_not(preds), np.logical_not(labels)).sum()
+    fp = np.logical_and(preds, np.logical_not(labels)).sum()
+    fn = np.logical_and(np.logical_not(preds), labels).sum()
+
+    print(f"accuracy: {(tp + tn) / preds.size}")
+    print(f"sensitivity: {tp / (tp + fp)}")
+    print(f"specificity: {tn / (tn + fn)}")
+
+    n_labels = 20
+    n_samples = 30
+    label_mask = labels.sum(axis=0) > n_samples
+    labels = labels[:, label_mask].astype(np.bool)
+    regression = regression[:, label_mask]
+    symbols = symbols or dataset.features[label_name].feature.names
+    symbols = [
+        symbols[idx] for idx in model.label_indices
+    ]  # ignore[union-attr]
+
+    rng = np.random.default_rng(seed=seed)
+    selected = rng.choice(labels.shape[1], n_labels)
+
+    scores = np.zeros((2 * n_labels * n_samples,))
+    tags = np.tile(
+        np.concat(
+            (
+                np.asarray(["match"]).repeat(n_samples),
+                np.asarray(["differ"]).repeat(n_samples),
+            )
+        ),
+        n_labels,
+    )
+
+    label_names = (
+        np.asarray([symbols[idx] for idx in selected])
+        .reshape((-1, 1))
+        .repeat(2 * n_samples)
+        .reshape((-1))
+    )
+
+    last = 0
+    for label in selected:
+        match = regression[labels[:, label], label]
+        differ = regression[jnp.logical_not(labels[:, label]), label]
+        scores[last : (last + n_samples)] = rng.permuted(match)[:n_samples]
+        last += n_samples
+        scores[last : (last + n_samples)] = rng.permuted(differ)[:n_samples]
+        last += n_samples
+
+    return pd.DataFrame({"score": scores, "tag": tags, "symbol": label_names})
+
+
+def plot(self, df: pd.DataFrame, name: str | None = None):
+    from plotnine import (
+        aes,
+        element_text,
+        geom_errorbar,
+        geom_point,
+        ggplot,
+        ggtitle,
+        labs,
+        position_dodge,
+        position_jitterdodge,
+        theme,
+    )
+
+    def stderr(x):
+        return np.std(x) / np.sqrt(x.shape[0])
+
+    metrics = df.groupby(["tag", "symbol"], as_index=False)["score"].agg(
+        ["mean", "std", stderr]
+    )
+
+    jitter = position_jitterdodge(
+        jitter_width=0.2, dodge_width=0.8, random_state=0
+    )
+    dodge = position_dodge(width=0.8)
+    p = (
+        ggplot(df, aes(x="symbol", color="tag"))
+        + geom_point(aes(y="score"), position=jitter, size=1, alpha=0.4)
+        + geom_errorbar(
+            aes(
+                y="mean",
+                ymin="mean - (1.95 * std)",
+                ymax="mean + (1.95 * std)",
+                fill="tag",
             ),
-            n_labels,
+            data=metrics,
+            color="black",
+            position=dodge,
+            width=0.5,
+            size=0.3,
         )
-
-        symbols = (
-            np.asarray([label_names[idx] for idx in selected])
-            .reshape((-1, 1))
-            .repeat(2 * n_samples)
-            .reshape((-1))
+        + geom_errorbar(
+            aes(
+                y="mean",
+                ymin="mean - (1.95 * stderr)",
+                ymax="mean + (1.95 * stderr)",
+                fill="tag",
+            ),
+            data=metrics,
+            color="black",
+            position=dodge,
+            width=0.8,
+            size=1,
         )
-
-        last = 0
-        for label in selected:
-            match = regression[labels[:, label], label]
-            differ = regression[jnp.logical_not(labels[:, label]), label]
-            scores[last : (last + n_samples)] = rng.permuted(match)[:n_samples]
-            last += n_samples
-            scores[last : (last + n_samples)] = rng.permuted(differ)[
-                :n_samples
-            ]
-            last += n_samples
-
-        self.data.update_params(
-            batch_size=batch_size_i, labels_per_batch=labels_per_batch_i
-        )
-        return pd.DataFrame({"score": scores, "tag": tags, "symbol": symbols})
-
-    def plot(self, df: pd.DataFrame, name: str | None = None):
-        from plotnine import (
-            aes,
-            element_text,
-            geom_errorbar,
-            geom_point,
-            ggplot,
-            ggtitle,
-            labs,
-            position_dodge,
-            position_jitterdodge,
-            theme,
-        )
-
-        def stderr(x):
-            return np.std(x) / np.sqrt(x.shape[0])
-
-        metrics = df.groupby(["tag", "symbol"], as_index=False)["score"].agg(
-            ["mean", "std", stderr]
-        )
-
-        jitter = position_jitterdodge(
-            jitter_width=0.2, dodge_width=0.8, random_state=0
-        )
-        dodge = position_dodge(width=0.8)
-        p = (
-            ggplot(df, aes(x="symbol", color="tag"))
-            + geom_point(aes(y="score"), position=jitter, size=1, alpha=0.4)
-            + geom_errorbar(
-                aes(
-                    y="mean",
-                    ymin="mean - (1.95 * std)",
-                    ymax="mean + (1.95 * std)",
-                    fill="tag",
-                ),
-                data=metrics,
-                color="black",
-                position=dodge,
-                width=0.5,
-                size=0.3,
-            )
-            + geom_errorbar(
-                aes(
-                    y="mean",
-                    ymin="mean - (1.95 * stderr)",
-                    ymax="mean + (1.95 * stderr)",
-                    fill="tag",
-                ),
-                data=metrics,
-                color="black",
-                position=dodge,
-                width=0.8,
-                size=1,
-            )
-            + labs(y="Similarity", x="Gene")
-            + ggtitle("Abstract embedding similarity")
-            + theme(axis_text_x=element_text(angle=20))
-        )
-        if name:
-            p.save(f"figures/model_comparison/{name}", width=10, height=10)
-        else:
-            p.show()
+        + labs(y="Similarity", x="Gene")
+        + ggtitle("Abstract embedding similarity")
+        + theme(axis_text_x=element_text(angle=20))
+    )
+    if name:
+        p.save(f"figures/model_comparison/{name}", width=10, height=10)
+    else:
+        p.show()
