@@ -165,20 +165,21 @@ def test(
 
         Uses the template indices to sync with output templates.
         """
-        return np.isin(model.label_indices, labels)  # ignore[arg-type]
+        return np.isin(model.templates.indices, labels)  # ignore[arg-type]
 
-    if model.label_indices is None:
+    if model.templates is None:
         raise ValueError("Templates most be attached to model before testing.")
 
     model.eval()
 
     n_samples = n_samples or len(dataset)
+    n_samples = min(n_samples, len(dataset))
     batch_size = batch_size or n_samples
     n_batches = n_samples // batch_size
 
     batch_regression = []
 
-    mini_dataset = dataset.shuffle(seed=seed).select(n_samples)
+    mini_dataset = dataset.shuffle(seed=seed).select(range(n_samples))
     abstracts = mini_dataset["abstract"]
     titles = mini_dataset["title"]
     for i in range(n_batches):
@@ -193,8 +194,8 @@ def test(
 
         batch_regression.append(model.predict(samples))
 
-    regression = np.concat(batch_regression, axis=0)
-    labels = np.concat([multihot(labs) for labs in mini_dataset[label_name]])
+    regression = np.vstack(batch_regression)
+    labels = np.vstack([multihot(labs) for labs in mini_dataset[label_name]])
 
     preds = regression > 0.5
 
@@ -214,7 +215,7 @@ def test(
     regression = regression[:, label_mask]
     symbols = symbols or dataset.features[label_name].feature.names
     symbols = [
-        symbols[idx] for idx in model.label_indices
+        symbols[idx] for idx in model.templates.indices
     ]  # ignore[union-attr]
 
     rng = np.random.default_rng(seed=seed)
@@ -250,7 +251,7 @@ def test(
     return pd.DataFrame({"score": scores, "tag": tags, "symbol": label_names})
 
 
-def plot(self, df: pd.DataFrame, name: str | None = None):
+def plot(df: pd.DataFrame, name: str | None = None):
     from plotnine import (
         aes,
         element_text,

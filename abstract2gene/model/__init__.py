@@ -11,12 +11,18 @@ __all__ = [
     "RawSimilarity",
     "MultiLayer",
     "MLPExtras",
-    "Attention",
     "Trainer",
     "Model",
     "test",
     "plot",
+    "load_from_disk",
 ]
 
-from ._models import Attention, MLPExtras, Model, MultiLayer, RawSimilarity
+from ._models import (
+    MLPExtras,
+    Model,
+    MultiLayer,
+    RawSimilarity,
+    load_from_disk,
+)
 from ._trainer import Trainer, plot, test

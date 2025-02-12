@@ -2,22 +2,40 @@ __all__ = [
     "RawSimilarity",
     "MultiLayer",
     "MLPExtras",
-    "Attention",
     "Model",
+    "load_from_disk",
 ]
 
-from typing import Sequence
+
+import dataclasses
+import json
+import os
+import re
 
 import jax
 import jax.numpy as jnp
 import numpy as np
+import orbax.checkpoint as ocp
 from flax import nnx
 from flax.nnx import rnglib
 from jax.typing import DTypeLike
 from sentence_transformers import SentenceTransformer
 
+from abstract2gene.data import model_path
 from abstract2gene.dataset import DataLoaderDict
 from abstract2gene.typing import Samples
+
+
+@dataclasses.dataclass
+class Templates:
+    """Holds template data.
+
+    Only needed since directly storing arrays in an nnx model that aren't
+    parameters causes an error when jax.flatten is run.
+    """
+
+    indices: np.ndarray
+    values: jax.Array
 
 
 class Model(nnx.Module):
@@ -42,7 +60,7 @@ class Model(nnx.Module):
 
     def __init__(
         self,
-        encoder: SentenceTransformer | None = None,
+        seed: int = 0,
     ):
         """Initialize a model.
 
@@ -53,9 +71,11 @@ class Model(nnx.Module):
             passed in.
 
         """
-        self.templates: Samples | None = None
-        self.label_indices: np.ndarray | None = None
+        self.templates: Templates | None = None
         self.encoder: SentenceTransformer | None = None
+        self.seed = seed
+
+        self._encoder_name = ""
 
     def __call__(self, x: jax.Array) -> jax.Array:
         raise NotImplementedError
@@ -73,20 +93,31 @@ class Model(nnx.Module):
 
         templates, indices = dataset.get_templates(template_size)
         templates = self(templates)
-        self.templates = dataset.fold_templates(templates).mean(axis=1)
+        templates = dataset.fold_templates(templates, template_size).mean(
+            axis=1
+        )
 
-        self.label_indices = indices
+        self.templates = Templates(indices=indices, values=templates)
+
+    def attach_encoder(self, name: str) -> None:
+        """Attach a sentence-transformer encoder.
+
+        Pass in the name of the encoder exactly as would be given to the
+        SentenceTransformer class.
+        """
+        self._encoder_name = name
+        self.encoder = SentenceTransformer(name)
 
     def predict(
         self,
-        x: Samples | str | Sequence[str],
+        x: Samples | str | list[str],
         templates: Samples | None = None,
     ) -> jax.Array:
         """Calculate similarity of samples `x` to templates `template`.
 
         Parameters
         ----------
-        x : ArrayLike, str, Sequence[str]
+        x : ArrayLike, str, list[str]
             Can be embeddings in the form of a row vector of a single sample or
             a matrix where each row is a sample. Or can be strings to be passed
             to the encoder to create embeddings (requires encoder to be
@@ -102,13 +133,17 @@ class Model(nnx.Module):
             and 1 for each sample, template pair.
 
         """
-        templates = templates if templates is not None else self.templates
-
-        if templates is None:
+        if templates is None and self.templates is None:
             raise ValueError(
                 """Must attach templates to model or explicitly pass templates.
                 See `model.attach_templates`."""
             )
+
+        templates = (
+            templates
+            if templates is not None
+            else self.templates.values  # ignore[union-attr]
+        )
 
         if isinstance(x, str):
             x = [x]
@@ -119,13 +154,83 @@ class Model(nnx.Module):
                     """Must attach an encoder to predict from strings."""
                 )
 
-            x = self.encoder.encode(x)
+            x = jnp.asarray(self.encoder.encode(x))
 
-        return nnx.sigmoid(self.logits_fn(self(x), templates))
+        return nnx.sigmoid(
+            self.logits_fn(self(x), templates)  # ignore[arg-type]
+        )
 
     @nnx.jit
-    def logits_fn(self, x: Samples, templates: Samples):
+    def logits_fn(self, x: Samples, templates: Samples) -> jax.Array:
         return x @ templates.T
+
+    def save_to_disk(self, name: str) -> None:
+        save_dir = ocp.test_utils.erase_and_create_empty(model_path(name))
+
+        cls_name = str(type(self))
+        m = re.search(r"_models\.(.*)'", cls_name)
+
+        if m is None:
+            raise RuntimeError("Could not determine model class name.")
+
+        metadata = {"seed": self.seed, "cls_name": m.group(1)}
+        if hasattr(self, "_dims"):
+            metadata["dims"] = self._dims
+
+        metadata["encoder"] = self._encoder_name
+
+        with open(os.path.join(save_dir, "metadata.json"), "w") as js:
+            json.dump(metadata, js)
+
+        if self.templates is not None:
+            np.savez_compressed(
+                os.path.join(save_dir, "templates.npz"),
+                templates=np.asarray(self.templates.values),
+                label_indices=self.templates.indices,
+            )
+
+        _, state = nnx.split(self)
+
+        with ocp.StandardCheckpointer() as ckptr:
+            ckptr.save(os.path.join(save_dir, "state"), state)
+            ckptr.wait_until_finished()
+
+
+def load_from_disk(name: str) -> Model:
+    save_dir = model_path(name)
+
+    with open(os.path.join(save_dir, "metadata.json"), "r") as js:
+        metadata = json.load(js)
+
+    model_cls = {
+        "RawSimilarity": RawSimilarity,
+        "MultiLayer": MultiLayer,
+        "MLPExtras": MLPExtras,
+    }
+
+    cls_name = metadata.pop("cls_name")
+    encoder_name = metadata.pop("encoder")
+    print(metadata)
+
+    abstract_model = nnx.eval_shape(lambda: model_cls[cls_name](**metadata))
+    graphdef, abstract_state = nnx.split(abstract_model)
+    with ocp.StandardCheckpointer() as ckptr:
+        state = ckptr.restore(os.path.join(save_dir, "state"), abstract_state)
+
+    model = nnx.merge(graphdef, state)
+
+    if encoder_name:
+        model.encoder = SentenceTransformer(encoder_name)
+        model._encoder_name = encoder_name
+
+    if os.path.exists(os.path.join(save_dir, "templates.npz")):
+        with np.load(os.path.join(save_dir, "templates.npz")) as data:
+            templates = data["templates"]
+            label_indices = data["label_indices"]
+
+        model.templates = Templates(indices=label_indices, values=templates)
+
+    return model
 
 
 class LinearTemplate(nnx.Module):
@@ -140,7 +245,6 @@ class LinearTemplate(nnx.Module):
         bias_key = rngs.params()
         initializer = nnx.initializers.zeros_init()
         self.bias = nnx.Param(initializer(bias_key, (1,), dtype))
-        self.templates: Samples | None = None
 
     def __call__(self, x: Samples, templates: Samples):
         return (x @ templates.T) + self.bias.value
@@ -153,9 +257,9 @@ class RawSimilarity(Model):
     """
 
     def __init__(self, seed: int):
-        super().__init__()
+        super().__init__(seed=seed)
         rngs = nnx.Rngs(seed)
-        self.template = LinearTemplate(rngs=rngs)
+        self.template_layer = LinearTemplate(rngs=rngs)
 
     def __call__(self, x: Samples):
         return x
@@ -165,7 +269,7 @@ class RawSimilarity(Model):
         templates = templates / jnp.linalg.norm(
             templates, axis=1, keepdims=True
         )
-        return self.template(x, templates)
+        return self.template_layer(x, templates)
 
 
 class MultiLayer(Model):
@@ -179,13 +283,15 @@ class MultiLayer(Model):
         of the output. The true output dimensionality is determine by the
         number of rows in templates.
         """
-        super().__init__()
+        super().__init__(seed=seed)
         rngs = nnx.Rngs(seed)
+        self._dims = dims
+
         self.layers = [
             nnx.Linear(dims[i], dims[i + 1], rngs=rngs)
             for i in range(len(dims) - 1)
         ]
-        self.template = LinearTemplate(rngs=rngs)
+        self.template_layer = LinearTemplate(rngs=rngs)
 
     @nnx.jit
     def __call__(self, x):
@@ -195,7 +301,7 @@ class MultiLayer(Model):
         return x
 
     def logits_fn(self, x: Samples, templates: Samples):
-        return self.template(x, templates)
+        return self.template_layer(x, templates)
 
 
 class MLPExtras(Model):
@@ -213,9 +319,10 @@ class MLPExtras(Model):
         of the output. The true output dimensionality is determine by the
         number of rows in templates.
         """
-        super().__init__()
+        super().__init__(seed=seed)
         rngs = nnx.Rngs(seed)
-        self.template = LinearTemplate(rngs=rngs)
+        self._dims = dims
+        self.template_layer = LinearTemplate(rngs=rngs)
         self.layers = [
             nnx.Linear(dims[i], dims[i + 1], rngs=rngs)
             for i in range(len(dims) - 1)
@@ -232,4 +339,4 @@ class MLPExtras(Model):
         return x
 
     def logits_fn(self, x: Samples, templates: Samples):
-        return self.template(x, templates)
+        return self.template_layer(x, templates)

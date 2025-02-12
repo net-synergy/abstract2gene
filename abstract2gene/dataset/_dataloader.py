@@ -237,14 +237,17 @@ class DataLoaderDict(UserDict):
         samples = batch[n_temp_rows:, :]
         return (templates, samples)
 
-    def fold_templates(self, templates: Samples) -> Samples:
+    def fold_templates(
+        self, templates: Samples, template_size: int | None = None
+    ) -> Samples:
         """Fold templates into a 3d array.
 
         Returned templates are n_labels x template_size x features. Reduce over
         axis 1 to get a single template per label.
         """
-        n_labels = templates.shape[0] // self.template_size
-        return templates.reshape((n_labels, self.template_size, -1))
+        template_size = template_size or self.template_size
+        n_labels = templates.shape[0] // template_size
+        return templates.reshape((n_labels, template_size, -1))
 
 
 class DataLoader:
