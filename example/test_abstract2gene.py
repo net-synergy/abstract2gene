@@ -12,11 +12,11 @@ dataset = datasets.load_dataset(
 )["train"]
 
 symbols = mutators.get_gene_symbols(dataset)
-df = a2g.model.test(model, dataset, "gene", symbols=symbols, n_samples=10000)
+df = a2g.model.test(model, dataset, "gene", symbols=symbols, n_samples=30_000)
 a2g.model.plot(df, "multi_layer.svg")
 
-dataset = mutators.attach_pubmed_genes(dataset, "gene2pubmed", max_cpu=1)
+dataset = mutators.attach_pubmed_genes(dataset, "gene2pubmed", max_cpu=10)
 df = a2g.model.test(
-    model, dataset, "gene2pubmed", symbols=symbols, n_samples=10000
+    model, dataset, "gene2pubmed", symbols=symbols, n_samples=50_000
 )
 a2g.model.plot(df, "multi_layer_pubmed_labels.svg")

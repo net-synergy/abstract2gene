@@ -26,7 +26,7 @@ os.environ.update(
     }
 )
 
-encoder_path = model_path("specter-abstract-genes")
+encoder_path = model_path("pubmedncl-abstract2gene")
 encoder = SentenceTransformer(encoder_path)
 
 dataset = datasets.load_dataset(
@@ -43,7 +43,11 @@ dataset = dataset.filter(
     num_proc=10,
 )
 dataset = mutators.mask_abstract(dataset, "gene").map(
-    lambda example: {"embedding": encoder.encode(example["abstract"])},
+    lambda example: {
+        "embedding": encoder.encode(
+            example["title"] + "[SEP]" + example["abstract"]
+        )
+    },
     remove_columns=["abstract"],
 )
 
@@ -54,7 +58,7 @@ dataloader, _ = a2g.dataset.from_huggingface(
     batch_size=128,
     labels_per_batch=8,
     template_size=1,
-    max_steps=2000,
+    max_steps=3000,
 )
 # dataloader.update_params()
 
@@ -64,7 +68,11 @@ model = a2g.model.MLPExtras(seed=20, dims=dims)
 dataloader.reset_rngs()
 tx = optax.adam(learning_rate=1e-4)
 trainer = a2g.model.Trainer(model, dataloader, tx)
-results = trainer.train(max_epochs=5)
+results = trainer.train(max_epochs=40)
+trainer.data.update_params(template_size=4)
+results = trainer.train(max_epochs=20)
+trainer.data.update_params(template_size=8)
+results = trainer.train(max_epochs=20)
 
 model.attach_encoder(encoder_path)
 model.attach_templates(dataloader, template_size=32)

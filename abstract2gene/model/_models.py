@@ -142,7 +142,7 @@ class Model(nnx.Module):
         templates = (
             templates
             if templates is not None
-            else self.templates.values  # ignore[union-attr]
+            else self.templates.values  # type: ignore[union-attr]
         )
 
         if isinstance(x, str):
@@ -157,7 +157,7 @@ class Model(nnx.Module):
             x = jnp.asarray(self.encoder.encode(x))
 
         return nnx.sigmoid(
-            self.logits_fn(self(x), templates)  # ignore[arg-type]
+            self.logits_fn(self(x), templates)  # type: ignore[arg-type]
         )
 
     @nnx.jit
@@ -210,7 +210,6 @@ def load_from_disk(name: str) -> Model:
 
     cls_name = metadata.pop("cls_name")
     encoder_name = metadata.pop("encoder")
-    print(metadata)
 
     abstract_model = nnx.eval_shape(lambda: model_cls[cls_name](**metadata))
     graphdef, abstract_state = nnx.split(abstract_model)

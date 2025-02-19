@@ -165,12 +165,14 @@ def test(
 
         Uses the template indices to sync with output templates.
         """
-        return np.isin(model.templates.indices, labels)  # ignore[arg-type]
+        return np.isin(model.templates.indices, labels)  # type: ignore[arg-type]
 
     if model.templates is None:
         raise ValueError("Templates most be attached to model before testing.")
 
     model.eval()
+
+    rng = np.random.default_rng(seed=seed)
 
     n_samples = n_samples or len(dataset)
     n_samples = min(n_samples, len(dataset))
@@ -197,28 +199,54 @@ def test(
     regression = np.vstack(batch_regression)
     labels = np.vstack([multihot(labs) for labs in mini_dataset[label_name]])
 
-    preds = regression > 0.5
+    max_acc = 0.0
+    max_thresh = 0.0
+    for t in range(0, 50, 1):
+        thresh = t / 100
+        preds = regression > thresh
 
-    tp = np.logical_and(preds, labels).sum()
-    tn = np.logical_and(jnp.logical_not(preds), np.logical_not(labels)).sum()
-    fp = np.logical_and(preds, np.logical_not(labels)).sum()
-    fn = np.logical_and(np.logical_not(preds), labels).sum()
+        tp = np.logical_and(preds, labels).sum()
+        tn = np.logical_and(
+            np.logical_not(preds), np.logical_not(labels)
+        ).sum()
+        fp = np.logical_and(preds, np.logical_not(labels)).sum()
+        fn = np.logical_and(np.logical_not(preds), labels).sum()
 
-    print(f"accuracy: {(tp + tn) / preds.size}")
-    print(f"sensitivity: {tp / (tp + fp)}")
-    print(f"specificity: {tn / (tn + fn)}")
+        binary_acc = 0
+        n_examples = labels.sum(axis=0)
+        for i in range(labels.shape[1]):
+            binary_acc += preds[labels[:, i], i].sum()
+            negatives = rng.choice(
+                preds[np.logical_not(labels[:, i]), i],
+                n_examples[i],
+                replace=False,
+            )
+            binary_acc += (negatives == 0).sum()
 
-    n_labels = 20
-    n_samples = 30
-    label_mask = labels.sum(axis=0) > n_samples
+        binary_acc /= 2 * n_examples.sum()
+
+        print(f"Threshold: {thresh}")
+        print(f"  accuracy: {(tp + tn) / preds.size}")
+        print(f"  sensitivity: {tp / (tp + fp)}")
+        print(f"  specificity: {tn / (tn + fn)}")
+        print(f"  Bin ACC: {binary_acc}\n")
+
+        if binary_acc > max_acc:
+            max_acc = binary_acc
+            max_thresh = thresh
+
+    print(f"Best threshold: {max_thresh}\n")
+    n_samples = 20
+    label_mask = labels.sum(axis=0) >= n_samples
+    n_labels = min(20, label_mask.sum())
+
     labels = labels[:, label_mask].astype(np.bool)
     regression = regression[:, label_mask]
     symbols = symbols or dataset.features[label_name].feature.names
     symbols = [
-        symbols[idx] for idx in model.templates.indices
-    ]  # ignore[union-attr]
+        symbols[idx] for idx in model.templates.indices[label_mask]
+    ]  # type: ignore[union-attr]
 
-    rng = np.random.default_rng(seed=seed)
     selected = rng.choice(labels.shape[1], n_labels)
 
     scores = np.zeros((2 * n_labels * n_samples,))
@@ -236,7 +264,6 @@ def test(
         np.asarray([symbols[idx] for idx in selected])
         .reshape((-1, 1))
         .repeat(2 * n_samples)
-        .reshape((-1))
     )
 
     last = 0
