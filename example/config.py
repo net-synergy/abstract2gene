@@ -1,7 +1,31 @@
+"""Defines data used throughout the examples.
+
+These values can be changed here or in the examples themselves as needed. This
+is intended purely for organization and reproducibility of results.
+"""
+
+_file_template = "data/BioCXML_{archive}/data-{f_idx:05}-of-{f_total:05}.arrow"
+
 EMBEDDING_TRAIN_FILES = [
-    f"data/BioCXML_9/data-{i:05}-of-00021.arrow" for i in range(10)
+    _file_template.format(archive=9, f_idx=i, f_total=21) for i in range(10)
 ]
 A2G_TRAIN_FILES = [
-    f"data/BioCXML_9/data-{i:05}-of-00021.arrow" for i in range(10, 15)
+    _file_template.format(archive=9, f_idx=i, f_total=21)
+    for i in range(10, 15)
 ]
-TEST_FILES = ["data/BioCXML_8/data-00000-of-00021.arrow"]
+LABEL_SIMILARITY_FILES = [
+    _file_template.format(archive=8, f_idx=i, f_total=21) for i in range(2)
+]
+TEST_FILES = [_file_template.format(archive=7, f_idx=0, f_total=21)]
+
+MODELS = {
+    # General Purpose models
+    "ernie": "nghuyong/ernie-2.0-base-en",
+    "mpnet": "microsoft/mpnet-base",
+    "bert": "google-bert/bert-base-uncased",
+    # Science fine-tuned models
+    "specter": "sentence-transformers/allenai-specter",
+    "specter2": "allenai/specter2_base",
+    "scibert": "allenai/scibert_scivocab_uncased",
+    "pubmedncl": "malteos/PubMedNCL",
+}

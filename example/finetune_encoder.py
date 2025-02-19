@@ -1,6 +1,5 @@
-import itertools
-
-from datasets import Dataset, IterableDataset, load_from_disk
+import datasets
+from datasets import Dataset
 from sentence_transformers import (
     SentenceTransformer,
     SentenceTransformerTrainer,
@@ -10,50 +9,37 @@ from sentence_transformers.evaluation import TripletEvaluator
 from sentence_transformers.losses import MultipleNegativesRankingLoss
 from sentence_transformers.training_args import BatchSamplers
 
-from abstract2gene.data import dataset_path, model_path
-from abstract2gene.dataset import dataset_generator
-
-MODELS = {
-    "ernie": "nghuyong/ernie-2.0-base-en",
-    "mpnet": "microsoft/mpnet-base",
-    "bert": "google-bert/bert-base-uncased",
-    "specter": "sentence-transformers/allenai-specter",
-}
+from abstract2gene.data import model_path
+from abstract2gene.dataset import dataset_generator, mutators
+from example import config as cfg
 
 CHKPT_PATH = "models/"
 
 
-def load_data(
-    name: str, split: float = 0.8, batch_size: int = 32
-) -> dict[str, IterableDataset]:
-    # TODO: Replace load_from_disk -> load_dataset when pushed to HF hub.
-    dataset_dict = load_from_disk(dataset_path(name)).train_test_split(
-        train_size=split, seed=0, shuffle=True
-    )
+def load_dataset(
+    files: list[str], batch_size: int, n_batches: int, seed: int
+) -> Dataset:
+    dataset = datasets.load_dataset(
+        "dconnell/pubtator3_abstracts", data_files=files
+    )["train"]
+    dataset = mutators.mask_abstract(dataset, "gene", max_cpu=20)
 
-    return {
-        "train": dataset_generator(
-            dataset_dict["train"], seed=0, batch_size=batch_size
-        ),
-        "test": dataset_generator(
-            dataset_dict["test"], seed=0, batch_size=batch_size
-        ),
-    }
+    return dataset_generator(
+        dataset, seed=seed, batch_size=batch_size, n_batches=n_batches
+    )
 
 
 def finetune(
     model_name: str,
-    train_data: IterableDataset,
-    test_data: IterableDataset,
+    train_dataset: Dataset,
+    test_dataset: Dataset,
     batch_size: int,
-    n_steps: int,
     learning_rate: float,
     warmup_ratio: float,
 ):
-    model = SentenceTransformer(MODELS[model_name])
+    model = SentenceTransformer(cfg.MODELS[model_name])
     loss = MultipleNegativesRankingLoss(model)
 
-    eval_steps = min(n_steps, 500)
     args = SentenceTransformerTrainingArguments(
         output_dir=f"models/{model_name}",
         learning_rate=learning_rate,
@@ -63,60 +49,61 @@ def finetune(
         batch_sampler=BatchSamplers.BATCH_SAMPLER,
         per_device_train_batch_size=batch_size,
         per_device_eval_batch_size=batch_size,
-        max_steps=n_steps,
         eval_strategy="steps",
-        eval_steps=eval_steps,
-        save_steps=eval_steps,
+        eval_steps=50,
+        save_steps=50,
         save_total_limit=2,
-        logging_steps=eval_steps,
+        logging_steps=50,
         logging_first_step=True,
         logging_dir="logs",
     )
 
-    n_eval = batch_size * 50
-    eval_examples = list(itertools.islice(test_data, n_eval))
-    eval_kwds = {
-        k: [ex[k] for ex in eval_examples] for k in test_data.features
-    }
-
     evaluator = TripletEvaluator(
-        anchors=eval_kwds["anchor"],
-        positives=eval_kwds["positive"],
-        negatives=eval_kwds["negative"],
+        anchors=test_dataset["anchor"],
+        positives=test_dataset["positive"],
+        negatives=test_dataset["negative"],
         batch_size=batch_size,
     )
 
-    n_train = batch_size * n_steps
     trainer = SentenceTransformerTrainer(
         model=model,
         args=args,
-        train_dataset=Dataset.from_list(
-            list(itertools.islice(train_data, n_train))
-        ),
+        train_dataset=train_dataset,
         loss=loss,
         evaluator=evaluator,
     )
 
     trainer.train()
-    model.save_pretrained(model_path(f"{model_name}-abstract-genes"))
+    model.save_pretrained(model_path(f"{model_name}-gene2abstract"))
 
 
 if __name__ == "__main__":
-    batch_size = 64
-    n_steps = 10000
-    warmup_ratio = 0.22
-    learning_rate = 1.4e-5
-    dataset_name = "bioc_finetune"
-    model = "specter"
+    n_steps = 10_000
+    # batch_size = 48
+    # warmup_ratio = 0.18
+    # learning_rate = 6e-5
+    # model = "pubmedncl"
+    batch_size = 12
+    warmup_ratio = 0.08
+    learning_rate = 2e-5
+    model = "ernie"
 
-    data_dict = load_data(dataset_name, split=0.9, batch_size=batch_size)
+    train_dataset = load_dataset(
+        cfg.EMBEDDING_TRAIN_FILES,
+        batch_size=batch_size,
+        n_batches=n_steps,
+        seed=0,
+    )
+
+    test_dataset = load_dataset(
+        cfg.TEST_FILES, batch_size=batch_size, n_batches=50, seed=0
+    )
 
     finetune(
         model,
-        data_dict["train"].remove_columns("negatives"),
-        data_dict["test"],
+        train_dataset,
+        test_dataset,
         batch_size=batch_size,
-        n_steps=n_steps,
         learning_rate=learning_rate,
         warmup_ratio=warmup_ratio,
     )

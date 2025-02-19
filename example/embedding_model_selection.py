@@ -1,8 +1,6 @@
 """Compare models and hyperparamaters."""
 
-import itertools
-
-from datasets import Dataset, load_from_disk
+import datasets
 from sentence_transformers import (
     SentenceTransformer,
     SentenceTransformerTrainer,
@@ -12,19 +10,25 @@ from sentence_transformers.evaluation import TripletEvaluator
 from sentence_transformers.losses import MultipleNegativesRankingLoss
 from sentence_transformers.training_args import BatchSamplers
 
-from abstract2gene.data import dataset_path
-from abstract2gene.dataset import dataset_generator
+from abstract2gene.dataset import dataset_generator, mutators
+from example import config as cfg
 
-# TEMP: Change to full dataset. Requires modifying to work with a datasetdict.
-DATASET = "bioc_finetune"
-MODELS = {
-    "ernie": "nghuyong/ernie-2.0-base-en",
-    "mpnet": "microsoft/mpnet-base",
-    "bert": "google-bert/bert-base-uncased",
-    "specter": "sentence-transformers/allenai-specter",
-}
-N_STEPS = 100
 CHKPT_PATH = "models/"
+N_STEPS = 100
+N_TRIALS = 20
+
+
+def load_dataset(
+    files: list[str], batch_size: int, n_batches: int, seed: int
+) -> datasets.Dataset:
+    dataset = datasets.load_dataset(
+        "dconnell/pubtator3_abstracts", data_files=files
+    )["train"]
+    dataset = mutators.mask_abstract(dataset, "gene", max_cpu=20)
+
+    return dataset_generator(
+        dataset, seed=seed, batch_size=batch_size, n_batches=n_batches
+    )
 
 
 def hpo_search_space(trial):
@@ -47,14 +51,6 @@ def hpo_compute_objective(metrics):
     return metrics["eval_cosine_accuracy"]
 
 
-dataset_dict = load_from_disk(dataset_path(DATASET)).train_test_split(
-    train_size=0.9, seed=0, shuffle=True
-)
-
-dataset_train = dataset_generator(dataset_dict["train"], seed=0, batch_size=64)
-dataset_train = dataset_train.remove_columns("negative")
-dataset_test = dataset_generator(dataset_dict["test"], seed=0, batch_size=64)
-
 args = SentenceTransformerTrainingArguments(
     output_dir="models",
     fp16=False,
@@ -65,82 +61,81 @@ args = SentenceTransformerTrainingArguments(
     logging_dir="logs",
 )
 
-n_eval = 64 * 50
-eval_examples = list(itertools.islice(dataset_test, n_eval))
-eval_kwds = {k: [ex[k] for ex in eval_examples] for k in dataset_test.features}
+# dataset_train = load_dataset(cfg.EMBEDDING_TRAIN_FILES, 64, N_STEPS, 0)
+# dataset_train = dataset_train.remove_columns("negative")
+dataset_test = load_dataset(cfg.TEST_FILES, 64, 50, 0)
 
 evaluator = TripletEvaluator(
-    anchors=eval_kwds["anchor"],
-    positives=eval_kwds["positive"],
-    negatives=eval_kwds["negative"],
+    anchors=dataset_test["anchor"],
+    positives=dataset_test["positive"],
+    negatives=dataset_test["negative"],
 )
 
-for name in MODELS:
+# print("Pre fine-tuning accuracy")
+# for name, model in cfg.MODELS.items():
+#     print(name)
+#     original_model = SentenceTransformer(model)
+#     print(evaluator(original_model))
+
+# ## Select model
+# print("\nTraining")
+# for name, model in cfg.MODELS.items():
+
+#     def hpo_model_init() -> SentenceTransformer:
+#         return SentenceTransformer(model)
+
+#     print(name)
+#     trainer = SentenceTransformerTrainer(
+#         model=None,
+#         args=args,
+#         train_dataset=dataset_train,
+#         loss=hpo_loss_init,
+#         model_init=hpo_model_init,
+#         evaluator=evaluator,
+#     )
+
+#     best_trial = trainer.hyperparameter_search(
+#         hp_space=hpo_search_space,
+#         compute_objective=hpo_compute_objective,
+#         n_trials=N_TRIALS,
+#         direction="maximize",
+#         backend="optuna",
+#     )
+
+#     print(best_trial)
+#     print("")
+
+
+## Test winner further.
+# After running the above, ernie and pubmedncl came out as the best model to
+# fine-tune.
+dataset_train = load_dataset(cfg.EMBEDDING_TRAIN_FILES, 64, N_STEPS * 4, 1)
+dataset_train = dataset_train.remove_columns("negative")
+winners = ["ernie", "pubmedncl"]
+
+print("\nFurther training")
+for name in winners:
+
+    def hpo_winner_init() -> SentenceTransformer:
+        return SentenceTransformer(cfg.MODELS[name])
+
     print(name)
-    original_model = SentenceTransformer(MODELS[name])
-    print(evaluator(original_model))
-
-## Select model
-n_train = 64 * N_STEPS
-train_dataset = Dataset.from_list(
-    list(itertools.islice(dataset_train, n_train))
-)
-
-for name in MODELS:
-
-    def hpo_model_init() -> SentenceTransformer:
-        return SentenceTransformer(MODELS[name])
-
     trainer = SentenceTransformerTrainer(
         model=None,
         args=args,
-        train_dataset=train_dataset,
+        train_dataset=dataset_train,
         loss=hpo_loss_init,
-        model_init=hpo_model_init,
+        model_init=hpo_winner_init,
         evaluator=evaluator,
     )
 
     best_trial = trainer.hyperparameter_search(
         hp_space=hpo_search_space,
         compute_objective=hpo_compute_objective,
-        n_trials=20,
+        n_trials=30,
         direction="maximize",
         backend="optuna",
     )
 
-    print(name)
     print(best_trial)
     print("")
-
-
-## Test winner further.
-# After running the above, specter came out as the best model to fine-tune.
-n_train = 64 * N_STEPS * 4
-train_dataset = Dataset.from_list(
-    list(itertools.islice(dataset_train, n_train))
-)
-
-
-def hpo_specter_init() -> SentenceTransformer:
-    return SentenceTransformer(MODELS["specter"])
-
-
-trainer = SentenceTransformerTrainer(
-    model=None,
-    args=args,
-    train_dataset=train_dataset,
-    loss=hpo_loss_init,
-    model_init=hpo_specter_init,
-    evaluator=evaluator,
-)
-
-best_trial = trainer.hyperparameter_search(
-    hp_space=hpo_search_space,
-    compute_objective=hpo_compute_objective,
-    n_trials=30,
-    direction="maximize",
-    backend="optuna",
-)
-
-print(best_trial)
-print("")
