@@ -6,12 +6,7 @@ __all__ = [
     "delete_from_cache",
 ]
 
-import os
-
-import numpy as np
-import pandas as pd
-
-from abstract2gene.storage import _storage_factory, default_cache_dir
+from abstract2gene.storage import _storage_factory
 from abstract2gene.storage import delete_from_cache as _delete_cache
 from abstract2gene.storage import list_cache as _list_cache
 
