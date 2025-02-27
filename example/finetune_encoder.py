@@ -9,7 +9,7 @@ from sentence_transformers.evaluation import TripletEvaluator
 from sentence_transformers.losses import MultipleNegativesRankingLoss
 from sentence_transformers.training_args import BatchSamplers
 
-from abstract2gene.data import model_path
+from abstract2gene.data import encoder_path
 from abstract2gene.dataset import dataset_generator, mutators
 from example import config as cfg
 
@@ -74,7 +74,7 @@ def finetune(
     )
 
     trainer.train()
-    model.save_pretrained(model_path(f"{model_name}-gene2abstract"))
+    model.save_pretrained(encoder_path(f"{model_name}-gene2abstract"))
 
 
 if __name__ == "__main__":

@@ -5,6 +5,7 @@ __all__ = [
     "default_cache_dir",
     "default_data_dir",
     "model_path",
+    "encoder_path",
     "dataset_path",
 ]
 
@@ -14,6 +15,7 @@ from abstract2gene.storage import (
     dataset_path,
     default_cache_dir,
     default_data_dir,
+    encoder_path,
     model_path,
 )
 

@@ -27,15 +27,15 @@ import speakeasy2 as se2
 from sentence_transformers import SentenceTransformer
 
 import abstract2gene as a2g
-from abstract2gene.data import model_path
+from abstract2gene.data import encoder_path, model_path
 from abstract2gene.dataset import mutators
 from example import config as cfg
 
 SEED = 0
 N_LABELS = 15
 SAMPLES_PER_LABEL = 100
-ENCODER = model_path("pubmedncl-abstract2gene")
 MODEL = model_path("abstract2gene")
+ENCODER = encoder_path("pubmedncl-abstract2gene")
 
 
 def filter_kth_prevalant_genes(

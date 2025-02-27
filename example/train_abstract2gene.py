@@ -8,7 +8,7 @@ from sentence_transformers import SentenceTransformer
 
 import abstract2gene as a2g
 import example.config as cfg
-from abstract2gene.data import model_path
+from abstract2gene.data import encoder_path, model_path
 from abstract2gene.dataset import mutators
 
 os.environ["XLA_FLAGS"] = (
@@ -26,8 +26,8 @@ os.environ.update(
     }
 )
 
-encoder_path = model_path("pubmedncl-abstract2gene")
-encoder = SentenceTransformer(encoder_path)
+encoder_loc = encoder_path("pubmedncl-abstract2gene")
+encoder = SentenceTransformer(encoder_loc)
 
 dataset = datasets.load_dataset(
     "dconnell/pubtator3_abstracts",
@@ -74,6 +74,6 @@ results = trainer.train(max_epochs=20)
 trainer.data.update_params(template_size=8)
 results = trainer.train(max_epochs=20)
 
-model.attach_encoder(encoder_path)
+model.attach_encoder(encoder_loc)
 model.attach_templates(dataloader, template_size=32)
 model.save_to_disk(model_path("abstract2gene"))
