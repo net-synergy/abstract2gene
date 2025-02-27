@@ -278,7 +278,7 @@ def test(
     return pd.DataFrame({"score": scores, "tag": tags, "symbol": label_names})
 
 
-def plot(df: pd.DataFrame, name: str | None = None):
+def plot(df: pd.DataFrame, path: str | None = None):
     from plotnine import (
         aes,
         element_text,
@@ -336,7 +336,7 @@ def plot(df: pd.DataFrame, name: str | None = None):
         + ggtitle("Abstract embedding similarity")
         + theme(axis_text_x=element_text(angle=20))
     )
-    if name:
-        p.save(f"figures/model_comparison/{name}", width=10, height=10)
+    if path:
+        p.save(path, width=10, height=10)
     else:
         p.show()
