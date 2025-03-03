@@ -199,43 +199,31 @@ def test(
     regression = np.vstack(batch_regression)
     labels = np.vstack([multihot(labs) for labs in mini_dataset[label_name]])
 
-    max_acc = 0.0
-    max_thresh = 0.0
-    for t in range(0, 50, 1):
-        thresh = t / 100
-        preds = regression > thresh
+    preds = regression > 0.5
 
-        tp = np.logical_and(preds, labels).sum()
-        tn = np.logical_and(
-            np.logical_not(preds), np.logical_not(labels)
-        ).sum()
-        fp = np.logical_and(preds, np.logical_not(labels)).sum()
-        fn = np.logical_and(np.logical_not(preds), labels).sum()
+    tp = np.logical_and(preds, labels).sum()
+    tn = np.logical_and(np.logical_not(preds), np.logical_not(labels)).sum()
+    fp = np.logical_and(preds, np.logical_not(labels)).sum()
+    fn = np.logical_and(np.logical_not(preds), labels).sum()
 
-        binary_acc = 0
-        n_examples = labels.sum(axis=0)
-        for i in range(labels.shape[1]):
-            binary_acc += preds[labels[:, i], i].sum()
-            negatives = rng.choice(
-                preds[np.logical_not(labels[:, i]), i],
-                n_examples[i],
-                replace=False,
-            )
-            binary_acc += (negatives == 0).sum()
+    binary_acc = 0
+    n_examples = labels.sum(axis=0)
+    for i in range(labels.shape[1]):
+        binary_acc += preds[labels[:, i], i].sum()
+        negatives = rng.choice(
+            preds[np.logical_not(labels[:, i]), i],
+            n_examples[i],
+            replace=False,
+        )
+        binary_acc += (negatives == 0).sum()
 
-        binary_acc /= 2 * n_examples.sum()
+    binary_acc /= 2 * n_examples.sum()
 
-        print(f"Threshold: {thresh}")
-        print(f"  accuracy: {(tp + tn) / preds.size}")
-        print(f"  sensitivity: {tp / (tp + fp)}")
-        print(f"  specificity: {tn / (tn + fn)}")
-        print(f"  Bin ACC: {binary_acc}\n")
+    print(f"accuracy: {(tp + tn) / preds.size}")
+    print(f"sensitivity: {tp / (tp + fp)}")
+    print(f"specificity: {tn / (tn + fn)}")
+    print(f"Bin ACC: {binary_acc}\n")
 
-        if binary_acc > max_acc:
-            max_acc = binary_acc
-            max_thresh = thresh
-
-    print(f"Best threshold: {max_thresh}\n")
     n_samples = 20
     label_mask = labels.sum(axis=0) >= n_samples
     n_labels = min(20, label_mask.sum())
