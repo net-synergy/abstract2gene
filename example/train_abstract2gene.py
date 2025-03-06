@@ -60,20 +60,23 @@ dataloader, _ = a2g.dataset.from_huggingface(
     template_size=1,
     max_steps=3000,
 )
-# dataloader.update_params()
 
-dims = (dataloader.n_features, 768, 768)
-model = a2g.model.MLPExtras(seed=20, dims=dims)
+dims = (dataloader.n_features, 768)
+for n in range(1, 7):
+    dataloader.reset_rngs()
+    model = a2g.model.MultiLayer(seed=20, dims=dims)
+    tx = optax.adam(learning_rate=1e-4)
+    trainer = a2g.model.Trainer(model, dataloader, tx)
 
-dataloader.reset_rngs()
-tx = optax.adam(learning_rate=1e-4)
-trainer = a2g.model.Trainer(model, dataloader, tx)
-results = trainer.train(max_epochs=40)
-trainer.data.update_params(template_size=4)
-results = trainer.train(max_epochs=20)
-trainer.data.update_params(template_size=8)
-results = trainer.train(max_epochs=20)
+    trainer.data.update_params(labels_per_batch=2**n, template_size=1)
+    results = trainer.train(max_epochs=40)
 
-model.attach_encoder(encoder_loc)
-model.attach_templates(dataloader, template_size=32)
-model.save_to_disk(model_path("abstract2gene"))
+    trainer.data.update_params(template_size=4)
+    results = trainer.train(max_epochs=20)
+
+    trainer.data.update_params(template_size=8)
+    results = trainer.train(max_epochs=20)
+
+    model.attach_encoder(encoder_loc)
+    model.attach_templates(dataloader, template_size=32)
+    model.save_to_disk(model_path(f"a2g_768dim_per_batch_{2**n}"))
