@@ -33,13 +33,11 @@ def clear_save(path):
 
 
 save_path = dataset_path("bioc")
-# clear_save(save_path)
 
-# dataset = bioc2dataset(range(10), max_cpu=60)
-# dataset = mutators.attach_references(dataset)
+dataset = bioc2dataset(range(10), max_cpu=60)
+dataset = mutators.attach_references(dataset)
 
-# dataset.save_to_disk(save_path, max_shard_size="250MB")
-dataset = datasets.load_from_disk(save_path)
+dataset.save_to_disk(save_path, max_shard_size="250MB")
 
 os.mkdir(os.path.join(save_path, "data"))
 for k in dataset:
