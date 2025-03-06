@@ -18,6 +18,8 @@ adequate.
 We can use this example to compare embeddings produced by multiple models.
 """
 
+import os
+
 import datasets
 import igraph as ig
 import jax
@@ -27,15 +29,18 @@ import numpy as np
 import speakeasy2 as se2
 from sentence_transformers import SentenceTransformer
 
-import abstract2gene as a2g
-from abstract2gene.data import encoder_path, model_path
+from abstract2gene.data import encoder_path
 from abstract2gene.dataset import mutators
 from example import config as cfg
 
 SEED = 0
 N_LABELS = 15
 SAMPLES_PER_LABEL = 100
+FIGDIR = "figures/label_similarities"
 ENCODER = encoder_path("pubmedncl-abstract2gene")
+
+if not os.path.exists(FIGDIR):
+    os.makedirs(FIGDIR)
 
 
 def filter_kth_prevalant_genes(
@@ -92,7 +97,7 @@ def plot(corr, symbols, ground_truth, name, title):
     ax.set_yticks(tick_pos, symbols)
     fig.colorbar(im)
 
-    plt.savefig(f"figures/label_similarities/{name}.png", dpi=600)
+    plt.savefig(os.path.join(FIGDIR, f"{name}.png"), dpi=600)
 
 
 ## Load dataset

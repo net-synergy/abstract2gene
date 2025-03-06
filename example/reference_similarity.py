@@ -1,3 +1,5 @@
+import os
+
 import datasets
 import numpy as np
 import pandas as pd
@@ -8,8 +10,12 @@ import abstract2gene as a2g
 
 SEED = 10
 N_PUBLICATIONS = 10
+FIGDIR = "figures/reference_similarities/"
 MODEL = "a2g_768dim_per_batch_4"
 k = 5
+
+if not os.path.exists(FIGDIR):
+    os.makedirs(FIGDIR)
 
 model = a2g.model.load_from_disk(MODEL)
 dataset = datasets.load_dataset("dconnell/pubtator3_abstracts")["train"]
@@ -99,7 +105,7 @@ p = (
     + p9.geom_bar()
     + p9.coord_flip()
 )
-p.save(f"figures/reference_similarities/cluster_dist_{MODEL}_{k}.png", dpi=600)
+p.save(os.path.join(FIGDIR, f"cluster_dist_{MODEL}_{k}.png"), dpi=600)
 
 p = (
     p9.ggplot(
@@ -111,7 +117,7 @@ p = (
     + p9.coord_flip()
 )
 p.save(
-    f"figures/reference_similarities/cluster_dist_highlight_molecular_{MODEL}_{k}.png",
+    os.path.join(FIGDIR, f"cluster_dist_highlight_molecular_{MODEL}_{k}.png"),
     dpi=600,
 )
 
@@ -143,4 +149,4 @@ p = (
     + p9.geom_col(stat="identity", position="dodge", show_legend=False)
     + p9.theme(axis_text_x=p9.element_text(rotation=10))
 )
-p.save(f"figures/reference_similarities/parent_gene_dist_{MODEL}.png", dpi=600)
+p.save(os.path.join(FIGDIR, f"parent_gene_dist_{MODEL}.png"), dpi=600)

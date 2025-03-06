@@ -17,6 +17,10 @@ SEED = 80
 # Look for genes with a p-value below ALPHA but show at most MAX_GENES
 ALPHA = 0.05
 MAX_GENES = 50
+FIGDIR = "figures/differential_expression/"
+
+if not os.path.exists(FIGDIR):
+    os.makedirs(FIGDIR)
 
 dataset = datasets.load_dataset(
     "dconnell/pubtator3_abstracts", data_files=cfg.AD_DE_FILES
@@ -264,7 +268,7 @@ for name in [f"a2g_768dim_per_batch_{2**n}" for n in range(1, 7)]:
         )
         + p9.theme(axis_text_x=p9.element_text(rotation=90))
     )
-    p.save(f"figures/differential_expression/bernoulli_{name}.png", dpi=600)
+    p.save(os.path.join(FIGDIR, f"bernoulli_{name}.png"), dpi=600)
 
     p = (
         p9.ggplot(
@@ -284,6 +288,4 @@ for name in [f"a2g_768dim_per_batch_{2**n}" for n in range(1, 7)]:
         )
         + p9.theme(axis_text_x=p9.element_text(rotation=90))
     )
-    p.save(
-        f"figures/differential_expression/bernoulli_{name}_logy.png", dpi=600
-    )
+    p.save(os.path.join(FIGDIR, f"bernoulli_{name}_logy.png"), dpi=600)
