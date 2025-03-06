@@ -1,4 +1,5 @@
 import os
+import sys
 
 import datasets
 import numpy as np
@@ -8,11 +9,14 @@ import speakeasy2 as se2
 
 import abstract2gene as a2g
 
-SEED = 10
+SEED = 60
 N_PUBLICATIONS = 10
 FIGDIR = "figures/reference_similarities/"
 MODEL = "a2g_768dim_per_batch_4"
 k = 5
+
+if __name__ == "__main__" and len(sys.argv) == 2:
+    SEED = int(sys.argv[1])
 
 if not os.path.exists(FIGDIR):
     os.makedirs(FIGDIR)

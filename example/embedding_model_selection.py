@@ -1,5 +1,7 @@
 """Compare models and hyperparamaters."""
 
+import sys
+
 import datasets
 from sentence_transformers import (
     SentenceTransformer,
@@ -16,6 +18,10 @@ from example import config as cfg
 CHKPT_PATH = "models/"
 N_STEPS = 100
 N_TRIALS = 20
+SEED = 10
+
+if __name__ == "__main__" and len(sys.argv) == 2:
+    SEED = int(sys.argv[1])
 
 
 def load_dataset(
@@ -63,7 +69,7 @@ args = SentenceTransformerTrainingArguments(
 
 # dataset_train = load_dataset(cfg.EMBEDDING_TRAIN_FILES, 64, N_STEPS, 0)
 # dataset_train = dataset_train.remove_columns("negative")
-dataset_test = load_dataset(cfg.TEST_FILES, 64, 50, 0)
+dataset_test = load_dataset(cfg.TEST_FILES, 64, 50, SEED)
 
 evaluator = TripletEvaluator(
     anchors=dataset_test["anchor"],
@@ -109,7 +115,9 @@ evaluator = TripletEvaluator(
 ## Test winner further.
 # After running the above, ernie and pubmedncl came out as the best model to
 # fine-tune.
-dataset_train = load_dataset(cfg.EMBEDDING_TRAIN_FILES, 64, N_STEPS * 4, 1)
+dataset_train = load_dataset(
+    cfg.EMBEDDING_TRAIN_FILES, 64, N_STEPS * 4, SEED + 1
+)
 dataset_train = dataset_train.remove_columns("negative")
 winners = ["ernie", "pubmedncl"]
 

@@ -15,6 +15,10 @@ from example import config as cfg
 
 CHKPT_PATH = "models/"
 
+SEED = 20
+if __name__ == "__main__" and len(sys.argv) == 2:
+    SEED = int(sys.argv[1])
+
 
 def load_dataset(
     files: list[str], batch_size: int, n_batches: int, seed: int
@@ -79,24 +83,20 @@ def finetune(
 
 if __name__ == "__main__":
     n_steps = 10_000
-    # batch_size = 48
-    # warmup_ratio = 0.18
-    # learning_rate = 6e-5
-    # model = "pubmedncl"
-    batch_size = 12
-    warmup_ratio = 0.08
-    learning_rate = 2e-5
-    model = "ernie"
+    batch_size = 48
+    warmup_ratio = 0.18
+    learning_rate = 6e-5
+    model = "pubmedncl"
 
     train_dataset = load_dataset(
         cfg.EMBEDDING_TRAIN_FILES,
         batch_size=batch_size,
         n_batches=n_steps,
-        seed=0,
+        seed=SEED,
     )
 
     test_dataset = load_dataset(
-        cfg.TEST_FILES, batch_size=batch_size, n_batches=50, seed=0
+        cfg.TEST_FILES, batch_size=batch_size, n_batches=50, seed=SEED + 1
     )
 
     finetune(

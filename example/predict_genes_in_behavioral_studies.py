@@ -1,4 +1,5 @@
 import os
+import sys
 
 import datasets
 import matplotlib.pyplot as plt
@@ -8,11 +9,14 @@ import plotnine as p9
 
 import abstract2gene as a2g
 
-SEED = 10
+SEED = 70
 FIGDIR = "figures/behavioral_genes"
 
 if not os.path.exists(FIGDIR):
     os.makedirs(FIGDIR)
+
+if __name__ == "__main__" and len(sys.argv) == 2:
+    SEED = int(sys.argv[1])
 
 dataset = datasets.load_dataset("dconnell/pubtator3_abstracts")["train"]
 rng = np.random.default_rng(seed=SEED)

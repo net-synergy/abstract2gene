@@ -19,6 +19,7 @@ We can use this example to compare embeddings produced by multiple models.
 """
 
 import os
+import sys
 
 import datasets
 import igraph as ig
@@ -33,7 +34,7 @@ from abstract2gene.data import encoder_path
 from abstract2gene.dataset import mutators
 from example import config as cfg
 
-SEED = 0
+SEED = 50
 N_LABELS = 15
 SAMPLES_PER_LABEL = 100
 FIGDIR = "figures/label_similarities"
@@ -41,6 +42,10 @@ ENCODER = encoder_path("pubmedncl-abstract2gene")
 
 if not os.path.exists(FIGDIR):
     os.makedirs(FIGDIR)
+
+
+if __name__ == "__main__" and len(sys.argv) == 2:
+    SEED = int(sys.argv[1])
 
 
 def filter_kth_prevalant_genes(

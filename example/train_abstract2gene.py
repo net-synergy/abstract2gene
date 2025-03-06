@@ -1,4 +1,5 @@
 import os
+import sys
 
 import datasets
 import jax
@@ -26,6 +27,10 @@ os.environ.update(
     }
 )
 
+SEED = 30
+if __name__ == "__main__" and len(sys.argv) == 2:
+    SEED = int(sys.argv[1])
+
 encoder_loc = encoder_path("pubmedncl-abstract2gene")
 encoder = SentenceTransformer(encoder_loc)
 
@@ -35,7 +40,7 @@ dataset = datasets.load_dataset(
 )["train"]
 
 genes = np.bincount(jax.tree.leaves(dataset["gene"]))
-mask = genes > np.quantile(genes, 0.75)
+mask = genes > np.quantile(genes, 0.05)
 gene_ids = np.arange(len(genes))[mask]
 
 dataset = dataset.filter(
@@ -53,7 +58,7 @@ dataset = mutators.mask_abstract(dataset, "gene").map(
 
 dataloader, _ = a2g.dataset.from_huggingface(
     dataset,
-    seed=42,
+    seed=SEED,
     labels="gene",
     batch_size=128,
     labels_per_batch=8,
@@ -64,7 +69,7 @@ dataloader, _ = a2g.dataset.from_huggingface(
 dims = (dataloader.n_features, 768)
 for n in range(1, 7):
     dataloader.reset_rngs()
-    model = a2g.model.MultiLayer(seed=20, dims=dims)
+    model = a2g.model.MultiLayer(seed=SEED + 1, dims=dims)
     tx = optax.adam(learning_rate=1e-4)
     trainer = a2g.model.Trainer(model, dataloader, tx)
 

@@ -22,6 +22,9 @@ FIGDIR = "figures/differential_expression/"
 if not os.path.exists(FIGDIR):
     os.makedirs(FIGDIR)
 
+if __name__ == "__main__" and len(sys.argv) == 2:
+    SEED = int(sys.argv[1])
+
 dataset = datasets.load_dataset(
     "dconnell/pubtator3_abstracts", data_files=cfg.AD_DE_FILES
 )["train"]
