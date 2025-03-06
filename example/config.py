@@ -17,7 +17,7 @@ LABEL_SIMILARITY_FILES = [
     _file_template.format(archive=8, f_idx=i, f_total=21) for i in range(2)
 ]
 AD_DE_FILES = [
-    _file_template.format(archive=8, f_idx=i, f_total=21) for i in range(2, 5)
+    _file_template.format(archive=8, f_idx=i, f_total=21) for i in range(2, 15)
 ]
 TEST_FILES = [_file_template.format(archive=7, f_idx=0, f_total=21)]
 

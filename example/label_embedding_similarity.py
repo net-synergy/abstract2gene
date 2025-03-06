@@ -21,6 +21,7 @@ We can use this example to compare embeddings produced by multiple models.
 import datasets
 import igraph as ig
 import jax
+import matplotlib.colors as colors
 import matplotlib.pyplot as plt
 import numpy as np
 import speakeasy2 as se2
@@ -34,7 +35,6 @@ from example import config as cfg
 SEED = 0
 N_LABELS = 15
 SAMPLES_PER_LABEL = 100
-MODEL = model_path("abstract2gene")
 ENCODER = encoder_path("pubmedncl-abstract2gene")
 
 
@@ -76,9 +76,10 @@ def correlate(features: np.ndarray) -> np.ndarray:
 def plot(corr, symbols, ground_truth, name, title):
     graph = se2.knn_graph(corr, k=50)
     ordering_gt = se2.order_nodes(graph, ground_truth)
+    norm = colors.Normalize(vmin=0, vmax=1)
 
     fig, ax = plt.subplots()
-    ax.imshow(corr[np.ix_(ordering_gt, ordering_gt)])
+    im = ax.imshow(corr[np.ix_(ordering_gt, ordering_gt)], norm=norm)
 
     fig.suptitle(title)
 
@@ -89,9 +90,9 @@ def plot(corr, symbols, ground_truth, name, title):
 
     ax.set_xticks([])
     ax.set_yticks(tick_pos, symbols)
+    fig.colorbar(im)
 
-    plt.savefig(f"figures/label_similarities/{name}.svg")
-    # plt.show()
+    plt.savefig(f"figures/label_similarities/{name}.png", dpi=600)
 
 
 ## Load dataset
@@ -99,9 +100,8 @@ dataset = datasets.load_dataset(
     "dconnell/pubtator3_abstracts", data_files=cfg.LABEL_SIMILARITY_FILES
 )["train"]
 symbols = mutators.get_gene_symbols(dataset)
-model = a2g.model.load_from_disk(MODEL)
-model.eval()
 
+specter = SentenceTransformer("sentence-transformers/allenai-specter")
 embed_orig = SentenceTransformer("malteos/PubMedNCL")
 embed_ft = SentenceTransformer(ENCODER)
 
@@ -112,13 +112,19 @@ for k in [1, 5]:
 
     ds_k = ds_k.map(
         lambda examples: {
-            "original": [
+            "specter": [
+                specter.encode(title + "[SEP]" + abstract)
+                for title, abstract in zip(
+                    examples["title"], examples["abstract"]
+                )
+            ],
+            "pubmed-ncl": [
                 embed_orig.encode(title + "[SEP]" + abstract)
                 for title, abstract in zip(
                     examples["title"], examples["abstract"]
                 )
             ],
-            "fine_tuned": [
+            "fine-tuned": [
                 embed_ft.encode(title + "[SEP]" + abstract)
                 for title, abstract in zip(
                     examples["title"], examples["abstract"]
@@ -129,15 +135,6 @@ for k in [1, 5]:
         batch_size=30,
         remove_columns=["abstract"],
         desc="Encoding",
-    ).map(
-        lambda examples: {
-            "transformed": [
-                model(embedding) for embedding in examples["fine_tuned"]
-            ]
-        },
-        batched=True,
-        batch_size=1000,
-        desc="Transforming",
     )
 
     # Remove samples with multiple labels to prevent examples belonging to
@@ -168,10 +165,10 @@ for k in [1, 5]:
     ground_truth = ig.clustering.Clustering(clusters[indices])
 
     ds_k = ds_k.select(samples).with_format(
-        "numpy", columns=["original", "fine_tuned", "transformed"]
+        "numpy", columns=["pubmed-ncl", "fine-tuned", "specter"]
     )
 
-    for feature in ["original", "fine_tuned", "transformed"]:
+    for feature in ["pubmed-ncl", "fine-tuned", "specter"]:
         corr = correlate(ds_k[feature])
         plot(
             corr,

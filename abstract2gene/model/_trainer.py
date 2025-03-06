@@ -321,10 +321,9 @@ def plot(df: pd.DataFrame, path: str | None = None):
             size=1,
         )
         + labs(y="Similarity", x="Gene")
-        + ggtitle("Abstract embedding similarity")
         + theme(axis_text_x=element_text(angle=20))
     )
     if path:
-        p.save(path, width=10, height=10)
+        p.save(path, width=10, height=10, dpi=600)
     else:
         p.show()

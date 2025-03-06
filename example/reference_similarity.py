@@ -8,7 +8,8 @@ import abstract2gene as a2g
 
 SEED = 10
 N_PUBLICATIONS = 10
-MODEL = "abstract2gene"
+MODEL = "a2g_768dim_per_batch_4"
+k = 5
 
 model = a2g.model.load_from_disk(MODEL)
 dataset = datasets.load_dataset("dconnell/pubtator3_abstracts")["train"]
@@ -61,7 +62,7 @@ regression = regression / (np.linalg.norm(regression, axis=1, keepdims=True))
 corr = regression @ regression.T
 np.fill_diagonal(corr, 0)
 
-graph = se2.knn_graph(corr, 10, is_weighted=True)
+graph = se2.knn_graph(corr, k)
 clusters = se2.cluster(graph, subcluster=2, seed=SEED + 1)
 ordering = se2.order_nodes(corr, clusters)
 
@@ -98,18 +99,7 @@ p = (
     + p9.geom_bar()
     + p9.coord_flip()
 )
-p.save("figures/reference_similarities/cluster_dist.svg")
-
-p = (
-    p9.ggplot(
-        communities,
-        p9.aes(x="subcluster", fill="cited_by", color="cited_by"),
-    )
-    + p9.facet_wrap("~cluster")
-    + p9.geom_bar()
-    + p9.coord_flip()
-)
-p.save("figures/reference_similarities/cluster_dist_level_2.svg")
+p.save(f"figures/reference_similarities/cluster_dist_{MODEL}_{k}.png", dpi=600)
 
 p = (
     p9.ggplot(
@@ -120,7 +110,10 @@ p = (
     + p9.geom_bar()
     + p9.coord_flip()
 )
-p.save("figures/reference_similarities/cluster_dist_highlight_molecular.svg")
+p.save(
+    f"figures/reference_similarities/cluster_dist_highlight_molecular_{MODEL}_{k}.png",
+    dpi=600,
+)
 
 ## Analyze parent publications
 inputs = [
@@ -150,4 +143,4 @@ p = (
     + p9.geom_col(stat="identity", position="dodge", show_legend=False)
     + p9.theme(axis_text_x=p9.element_text(rotation=10))
 )
-p.save("figures/reference_similarities/parent_gene_dist.svg")
+p.save(f"figures/reference_similarities/parent_gene_dist_{MODEL}.png", dpi=600)

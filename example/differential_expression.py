@@ -11,16 +11,13 @@ from abstract2gene.data import PubmedDownloader
 from abstract2gene.dataset import mutators
 from example import config as cfg
 
-SEED = 80
 ## Private data
 TRANSCRIPTOME_PATH = "/disk4/data/adBulkTranscriptome/"
-MODEL = "abstract2gene"
-N_SAMPLES = 500
+SEED = 80
 # Look for genes with a p-value below ALPHA but show at most MAX_GENES
 ALPHA = 0.05
-MAX_GENES = 30
+MAX_GENES = 50
 
-model = a2g.model.load_from_disk(MODEL)
 dataset = datasets.load_dataset(
     "dconnell/pubtator3_abstracts", data_files=cfg.AD_DE_FILES
 )["train"]
@@ -125,11 +122,10 @@ ad_mask = np.fromiter(
 )
 
 rng = np.random.default_rng(seed=SEED)
-publications_ad = rng.choice(
-    np.arange(len(ad_mask))[ad_mask], N_SAMPLES, replace=False
-)
+n_samples = ad_mask.sum()
+publications_ad = np.arange(len(ad_mask))[ad_mask]
 publications_other = rng.choice(
-    np.arange(len(ad_mask))[np.logical_not(ad_mask)], N_SAMPLES, replace=False
+    np.arange(len(ad_mask))[np.logical_not(ad_mask)], n_samples, replace=False
 )
 
 
@@ -143,6 +139,7 @@ def inputs(index: np.ndarray) -> list[str]:
     ]
 
 
+model = a2g.model.load_from_disk("a2g_768dim_per_batch_2")
 np.isin(model.templates.indices, de_idx)
 de_dataset2model = [
     (
@@ -155,120 +152,138 @@ de_dataset2model = [
     if tf
 ]
 
-n_genes = min(MAX_GENES, len(de_idx))
-de_dataset2model = rng.choice(de_dataset2model, n_genes)
+n_genes = len(de_dataset2model)
 de_model_idx, de_dataset_idx = zip(*de_dataset2model)
 symbols = [symbols[i] for i in de_dataset_idx]
-predictions = pd.DataFrame(
-    {
-        "tag": np.array(
-            (
-                (["AD"] * N_SAMPLES * n_genes)
-                + (["other"] * N_SAMPLES * n_genes)
+
+for name in [f"a2g_768dim_per_batch_{2**n}" for n in range(1, 7)]:
+    model = a2g.model.load_from_disk(name)
+    predictions = pd.DataFrame(
+        {
+            "tag": np.array(
+                (
+                    (["AD"] * n_samples * n_genes)
+                    + (["other"] * n_samples * n_genes)
+                )
+                * 2
+            ),
+            "label": np.array(
+                (["a2g"] * n_samples * n_genes * 2)
+                + (["pubtator3"] * n_samples * n_genes * 2)
+            ),
+            "gene": np.array(symbols * n_samples * 4),
+            "prediction": np.hstack(
+                (
+                    np.array(model.predict(inputs(publications_ad)))[
+                        :, de_model_idx
+                    ].flatten(),
+                    np.array(model.predict(inputs(publications_other)))[
+                        :, de_model_idx
+                    ].flatten(),
+                    np.array(
+                        [
+                            gene in labels
+                            for labels in dataset[
+                                np.hstack(
+                                    (publications_ad, publications_other)
+                                )
+                            ]["gene"]
+                            for gene in de_dataset_idx
+                        ]
+                    ),
+                )
             )
-            * 2
-        ),
-        "label": np.array(
-            (["a2g"] * N_SAMPLES * n_genes * 2)
-            + (["pubtator3"] * N_SAMPLES * n_genes * 2)
-        ),
-        "gene": np.array(symbols * N_SAMPLES * 4),
-        "prob": np.hstack(
-            (
-                np.array(model.predict(inputs(publications_ad)))[
-                    :, de_model_idx
-                ].flatten(),
-                np.array(model.predict(inputs(publications_other)))[
-                    :, de_model_idx
-                ].flatten(),
-                np.array(
-                    [
-                        gene in labels
-                        for labels in dataset[
-                            np.hstack((publications_ad, publications_other))
-                        ]["gene"]
-                        for gene in de_dataset_idx
-                    ]
-                ),
-            )
+            > 0.5,
+        }
+    )
+
+    ## Hypothesis testing (One-sided proportion test)
+    sample_params = predictions.groupby(["tag", "gene", "label"]).agg(
+        ["sum", "mean"]
+    )
+    sample_params.columns = [
+        "prop" if col == "mean" else col for _, col in sample_params.columns
+    ]
+
+    def proportion_test(sample_params):
+        prop = "prop"
+        n = n_samples
+        x = "sum"
+        alpha = 0.05
+        z_crit = stats.norm.ppf(1 - (alpha / (n_genes)))
+        sample_prop = (
+            sample_params.loc["AD"][x] + sample_params.loc["other"][x]
+        ) / (2 * n)
+        z_score = (
+            sample_params.loc["AD"][prop] - sample_params.loc["other"][prop]
         )
-        > 0.5,
-    }
-)
+        z_score /= np.sqrt((2 * sample_prop * (1 - sample_prop)) / n)
 
-# predictions["pubtator3"] = [
-#     gene in labels
-#     for labels in dataset[np.hstack((publications_ad, publications_other))][
-#         "gene"
-#     ]
-#     for gene in de_dataset_idx
-# ]
+        return (z_score > z_crit).array
 
-## Hypothesis testing (One-sided proportion test)
-sample_params = predictions.groupby(["tag", "gene", "label"]).agg(
-    ["sum", "count", "mean"]
-)
-sample_params.columns = [
-    "prop" if col == "mean" else col for _, col in sample_params.columns
-]
-
-
-def proportion_test(sample_params):
-    prop = "prop"
-    n = "count"
-    x = "sum"
-    alpha = 0.05
-    z_crit = stats.norm.ppf(1 - (alpha / (n_genes)))
-    sample_prop = (
-        sample_params.loc["AD"][x] + sample_params.loc["other"][x]
-    ) / (sample_params.loc["AD"][n] + sample_params.loc["other"][n])
-    z_score = sample_params.loc["AD"][prop] - sample_params.loc["other"][prop]
-    z_score /= np.sqrt(
-        ((sample_prop * (1 - sample_prop)) / sample_params.loc["AD"][n])
-        + ((sample_prop * (1 - sample_prop)) / sample_params.loc["other"][n])
+    significant = proportion_test(sample_params)
+    sample_params = sample_params.reset_index()
+    sample_params = sample_params.pivot(
+        index=["label", "gene"], columns="tag", values=["prop"]
     )
+    sample_params.columns = [
+        f"{col[0]}_{col[1]}" for col in sample_params.columns
+    ]
 
-    return (z_score > z_crit).array
-
-
-significant = proportion_test(sample_params)
-sample_params = sample_params.reset_index()
-sample_params = sample_params.pivot(
-    index=["label", "gene"], columns="tag", values=["prop"]
-)
-sample_params.columns = [f"{col[0]}_{col[1]}" for col in sample_params.columns]
-
-# Need reshape trick because during the pivot we switch hierarchy from
-# gene>label to label>gene
-sample_params["significant"] = significant.reshape((-1, 2)).T.reshape((-1))
-
-mask = np.logical_or(
-    np.logical_or(
-        sample_params.loc["a2g"]["prop_AD"] > 0,
-        sample_params.loc["a2g"]["prop_other"] > 0,
-    ),
-    np.logical_or(
-        sample_params.loc["pubtator3"]["prop_AD"] > 0,
-        sample_params.loc["pubtator3"]["prop_other"] > 0,
-    ),
-)
-sample_params = sample_params[np.hstack((mask, mask))]
-sample_params = sample_params.reset_index()
-
-dodge_col = p9.position_dodge(width=0.4)
-p = (
-    p9.ggplot(
-        sample_params.reset_index(),
-        p9.aes(x="gene", xend="gene", color="label", alpha="significant"),
+    # Need reshape trick because during the pivot we switch hierarchy from
+    # gene>label to label>gene
+    sample_params["significant"] = significant.reshape((-1, 2)).T.reshape((-1))
+    mask = np.logical_or(
+        np.logical_or(
+            sample_params.loc["a2g", "prop_AD"] > 1e-2,
+            sample_params.loc["a2g", "prop_other"] > 1e-2,
+        ),
+        np.logical_or(
+            sample_params.loc["pubtator3", "prop_AD"] > 1e-2,
+            sample_params.loc["pubtator3", "prop_other"] > 1e-2,
+        ),
     )
-    + p9.geom_point(p9.aes(y="prop_AD"), size=0.2, position=dodge_col)
-    + p9.geom_segment(
-        p9.aes(y="prop_other", yend="prop_AD"),
-        position=dodge_col,
+    sample_params = sample_params.reset_index()
+    sample_params = sample_params[np.hstack((mask, mask))]
+
+    dodge_col = p9.position_dodge(width=0.4)
+    p = (
+        p9.ggplot(
+            sample_params.reset_index(),
+            p9.aes(x="gene", xend="gene", color="label", alpha="significant"),
+        )
+        + p9.geom_point(p9.aes(y="prop_AD"), size=0.2, position=dodge_col)
+        + p9.geom_segment(
+            p9.aes(y="prop_other", yend="prop_AD"),
+            position=dodge_col,
+        )
+        + p9.scale_alpha_discrete(range=(0.35, 1))
+        + p9.lims(y=(0, 0.5))
+        + p9.labs(
+            y="Proportion labeled", x="Gene", alpha="Significant difference"
+        )
+        + p9.theme(axis_text_x=p9.element_text(rotation=90))
     )
-    + p9.scale_alpha_discrete(range=(0.35, 1))
-    + p9.lims(y=(0, 0.5))
-    + p9.labs(y="Proportion labeled", x="Gene", alpha="Significant difference")
-    + p9.theme(axis_text_x=p9.element_text(rotation=90))
-)
-p.save(f"figures/differential_expression/bernoulli_{MODEL}.svg")
+    p.save(f"figures/differential_expression/bernoulli_{name}.png", dpi=600)
+
+    p = (
+        p9.ggplot(
+            sample_params.reset_index(),
+            p9.aes(x="gene", xend="gene", color="label", alpha="significant"),
+        )
+        + p9.geom_point(p9.aes(y="prop_AD"), size=0.2, position=dodge_col)
+        + p9.geom_segment(
+            p9.aes(y="prop_other", yend="prop_AD"),
+            position=dodge_col,
+        )
+        + p9.scale_alpha_discrete(range=(0.35, 1))
+        + p9.lims(y=(0, 0.5))
+        + p9.scale_y_log10()
+        + p9.labs(
+            y="Proportion labeled", x="Gene", alpha="Significant difference"
+        )
+        + p9.theme(axis_text_x=p9.element_text(rotation=90))
+    )
+    p.save(
+        f"figures/differential_expression/bernoulli_{name}_logy.png", dpi=600
+    )
