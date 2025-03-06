@@ -7,10 +7,10 @@ in the dataset.
 Results are pushed to the HuggingFace Hub.
 """
 
+import argparse
 import os
 import shutil
 
-import datasets
 from huggingface_hub import upload_large_folder
 from huggingface_hub.repocard import DatasetCard, DatasetCardData
 
@@ -32,9 +32,22 @@ def clear_save(path):
     os.rmdir(path)
 
 
+n_cpu = 60
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser()
+    parser.add_argument(
+        "--n_cpu",
+        type=int,
+        requried=False,
+        default=1,
+        help="Number of CPU processes to use to parse the Bioc files",
+    )
+    args = parser.parse_args()
+    n_cpu = args.n_cpu
+
 save_path = dataset_path("bioc")
 
-dataset = bioc2dataset(range(10), max_cpu=60)
+dataset = bioc2dataset(range(10), max_cpu=n_cpu)
 dataset = mutators.attach_references(dataset)
 
 dataset.save_to_disk(save_path, max_shard_size="250MB")
