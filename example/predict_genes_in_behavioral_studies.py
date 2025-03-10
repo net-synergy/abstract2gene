@@ -1,3 +1,10 @@
+"""Determine if abstract2gene can identify gene info in behavioral studies.
+
+A set of experiments to see if publications that have not been given gene
+annotations by PubTator3 have meaningful genetic components in their abstracts
+that abstract2gene is able to pick out.
+"""
+
 import os
 import sys
 
@@ -41,11 +48,15 @@ idx = idx[sort_idx]
 pmids = pmids[sort_idx]
 
 indices = [
-    [int(idx[np.searchsorted(pmids, ref)]) for ref in ref_list]
+    [
+        int(idx[np.searchsorted(pmids, ref)])
+        for ref in ref_list
+        if ref < len(pmids)
+    ]
     for ref_list in reference_lists
 ]
 
-indices = [
+behavioral_indices = [
     [
         i
         for i, ref in zip(ref_indices, ref_list)
@@ -54,13 +65,25 @@ indices = [
     for ref_indices, ref_list in zip(indices, reference_lists)
 ]
 
+molecular_indices = [
+    [
+        i
+        for i, ref in zip(ref_indices, ref_list)
+        if ((dataset[i]["pmid"] == ref) and (len(dataset[i]["gene"]) > 0))
+    ]
+    for ref_indices, ref_list in zip(indices, reference_lists)
+]
+
 selected_references = [
     (
         int(parent),
-        int(rng.choice(ref_indices, 1)[0]),
+        int(rng.choice(ref_behave_indices, 1)[0]),
+        int(rng.choice(ref_molec_indices, 1)[0]),
     )
-    for parent, ref_indices in zip(parent_publications, indices)
-    if len(ref_indices) > 0
+    for parent, ref_behave_indices, ref_molec_indices in zip(
+        parent_publications, behavioral_indices, molecular_indices
+    )
+    if (len(ref_behave_indices) > 0) and (len(ref_molec_indices) > 0)
 ]
 
 random_behavioral_study: list[int] = []
@@ -74,9 +97,9 @@ while len(random_behavioral_study) < len(selected_references):
 inputs = [
     [
         dataset[ref]["title"] + "[SEP]" + dataset[ref]["abstract"]
-        for ref in (parent, citation, random)
+        for ref in (parent, behave_citation, molec_citation, random)
     ]
-    for random, (parent, citation) in zip(
+    for random, (parent, behave_citation, molec_citation) in zip(
         random_behavioral_study, selected_references
     )
 ]
@@ -86,20 +109,33 @@ for name in [f"a2g_768dim_per_batch_{2**n}" for n in range(1, 7)]:
     probabilities = [
         np.array(model.predict(abstracts)) for abstracts in inputs
     ]
-    parent = np.hstack([[i, i] for i in range(len(inputs))])
-    group = np.hstack([["reference", "random"] for i in range(len(inputs))])
+    parent = np.hstack([[i, i, i] for i in range(len(inputs))])
+    group = np.hstack(
+        [
+            ["behavioral_reference", "molecular_reference", "random"]
+            for i in range(len(inputs))
+        ]
+    )
     corr = np.hstack(
         [
             [
-                (ref_set[0, :] @ ref_set[1, :])
-                / (
+                (ref_set[0, :] @ ref_set[1, :]) /
+                # / (ref_set[0, :] @ ref_set[0, :]),
+                (
                     np.linalg.norm(ref_set[0, :])
                     * np.linalg.norm(ref_set[1, :])
                 ),
-                (ref_set[0, :] @ ref_set[2, :])
-                / (
+                (ref_set[0, :] @ ref_set[2, :]) /
+                # / (ref_set[0, :] @ ref_set[0, :]),
+                (
                     np.linalg.norm(ref_set[0, :])
                     * np.linalg.norm(ref_set[2, :])
+                ),
+                (ref_set[0, :] @ ref_set[3, :]) /
+                # / (ref_set[0, :] @ ref_set[0, :]),
+                (
+                    np.linalg.norm(ref_set[0, :])
+                    * np.linalg.norm(ref_set[3, :])
                 ),
             ]
             for ref_set in probabilities
@@ -137,32 +173,64 @@ for name in [f"a2g_768dim_per_batch_{2**n}" for n in range(1, 7)]:
     selected_genes = [np.argmax(p_set[0]) for p_set in probabilities]
     selected_probabilities = np.vstack(
         [
-            (p_set[0][gene], p_set[1][gene], p_set[2][gene])
+            (
+                p_set[0][gene],
+                p_set[1][gene],
+                p_set[2][gene],
+                p_set[3][gene],
+            )
             for gene, p_set in zip(selected_genes, probabilities)
         ]
     )
 
-    fig, ax = plt.subplots()
-    sort_idx = np.argsort(selected_probabilities[:, 0])
-    ax.plot(
-        selected_probabilities[sort_idx, 0],
-        selected_probabilities[sort_idx, 1],
-        ".",
-        label="citation",
+    prob_df = pd.DataFrame(
+        {
+            "parent_prob": selected_probabilities[:, 0].repeat(3),
+            "reference_prob": selected_probabilities[:, 1:].reshape((-1,)),
+            "group": ["behavioral", "molecular", "random"]
+            * selected_probabilities.shape[0],
+        }
     )
-    ax.plot(
-        selected_probabilities[sort_idx, 0],
-        selected_probabilities[sort_idx, 2],
-        ".",
-        label="random",
+
+    p = (
+        p9.ggplot(
+            prob_df, p9.aes(x="parent_prob", y="reference_prob", color="group")
+        )
+        + p9.geom_point()
+        + p9.geom_smooth()
     )
-    ax.legend(loc="upper left")
-    ax.set_xlabel("parent prediction")
-    ax.set_ylabel("reference prediction")
-    ax.set_xlim(0, 1)
-    ax.set_ylim(0, 1)
-    plt.savefig(
+    p.save(
         os.path.join(FIGDIR, f"selected_gene_correlation_{name}.png"),
         dpi=600,
     )
-    plt.close()
+
+    # fig, ax = plt.subplots()
+    # sort_idx = np.argsort(selected_probabilities[:, 0])
+    # ax.plot(
+    #     selected_probabilities[sort_idx, 0],
+    #     selected_probabilities[sort_idx, 1],
+    #     ".",
+    #     label="behavioral citation",
+    # )
+    # ax.plot(
+    #     selected_probabilities[sort_idx, 0],
+    #     selected_probabilities[sort_idx, 2],
+    #     ".",
+    #     label="molecular citation",
+    # )
+    # ax.plot(
+    #     selected_probabilities[sort_idx, 0],
+    #     selected_probabilities[sort_idx, 3],
+    #     ".",
+    #     label="random",
+    # )
+    # ax.legend(loc="upper left")
+    # ax.set_xlabel("parent prediction")
+    # ax.set_ylabel("reference prediction")
+    # ax.set_xlim(0, 1)
+    # ax.set_ylim(0, 1)
+    # plt.savefig(
+    #     os.path.join(FIGDIR, f"selected_gene_correlation_{name}.png"),
+    #     dpi=600,
+    # )
+    # plt.close()
