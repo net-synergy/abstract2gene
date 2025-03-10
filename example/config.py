@@ -30,5 +30,5 @@ MODELS = {
     "specter": "sentence-transformers/allenai-specter",
     "specter2": "allenai/specter2_base",
     "scibert": "allenai/scibert_scivocab_uncased",
-    "pubmedncl": "malteos/PubMedNCL",
+    "PubMedNCL": "malteos/PubMedNCL",
 }

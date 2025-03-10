@@ -1,3 +1,5 @@
+import sys
+
 import datasets
 from datasets import Dataset
 from sentence_transformers import (
@@ -78,7 +80,9 @@ def finetune(
     )
 
     trainer.train()
-    model.save_pretrained(encoder_path(f"{model_name}-gene2abstract"))
+    model.save_pretrained(encoder_path(f"{model_name}-abstract2gene"))
+
+    model.push_to_hub(f"dconnell/{model_name}-abstract2gene")
 
 
 if __name__ == "__main__":
@@ -86,7 +90,7 @@ if __name__ == "__main__":
     batch_size = 48
     warmup_ratio = 0.18
     learning_rate = 6e-5
-    model = "pubmedncl"
+    model_name = "PubMedNCL"
 
     train_dataset = load_dataset(
         cfg.EMBEDDING_TRAIN_FILES,
@@ -100,7 +104,7 @@ if __name__ == "__main__":
     )
 
     finetune(
-        model,
+        model_name,
         train_dataset,
         test_dataset,
         batch_size=batch_size,
