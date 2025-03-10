@@ -67,8 +67,8 @@ args = SentenceTransformerTrainingArguments(
     logging_dir="logs",
 )
 
-# dataset_train = load_dataset(cfg.EMBEDDING_TRAIN_FILES, 64, N_STEPS, 0)
-# dataset_train = dataset_train.remove_columns("negative")
+dataset_train = load_dataset(cfg.EMBEDDING_TRAIN_FILES, 64, N_STEPS, 0)
+dataset_train = dataset_train.remove_columns("negative")
 dataset_test = load_dataset(cfg.TEST_FILES, 64, 50, SEED)
 
 evaluator = TripletEvaluator(
@@ -77,39 +77,39 @@ evaluator = TripletEvaluator(
     negatives=dataset_test["negative"],
 )
 
-# print("Pre fine-tuning accuracy")
-# for name, model in cfg.MODELS.items():
-#     print(name)
-#     original_model = SentenceTransformer(model)
-#     print(evaluator(original_model))
+print("Pre fine-tuning accuracy")
+for name, model in cfg.MODELS.items():
+    print(name)
+    original_model = SentenceTransformer(model)
+    print(evaluator(original_model))
 
 # ## Select model
-# print("\nTraining")
-# for name, model in cfg.MODELS.items():
+print("\nTraining")
+for name, model in cfg.MODELS.items():
 
-#     def hpo_model_init() -> SentenceTransformer:
-#         return SentenceTransformer(model)
+    def hpo_model_init() -> SentenceTransformer:
+        return SentenceTransformer(model)
 
-#     print(name)
-#     trainer = SentenceTransformerTrainer(
-#         model=None,
-#         args=args,
-#         train_dataset=dataset_train,
-#         loss=hpo_loss_init,
-#         model_init=hpo_model_init,
-#         evaluator=evaluator,
-#     )
+    print(name)
+    trainer = SentenceTransformerTrainer(
+        model=None,
+        args=args,
+        train_dataset=dataset_train,
+        loss=hpo_loss_init,
+        model_init=hpo_model_init,
+        evaluator=evaluator,
+    )
 
-#     best_trial = trainer.hyperparameter_search(
-#         hp_space=hpo_search_space,
-#         compute_objective=hpo_compute_objective,
-#         n_trials=N_TRIALS,
-#         direction="maximize",
-#         backend="optuna",
-#     )
+    best_trial = trainer.hyperparameter_search(
+        hp_space=hpo_search_space,
+        compute_objective=hpo_compute_objective,
+        n_trials=N_TRIALS,
+        direction="maximize",
+        backend="optuna",
+    )
 
-#     print(best_trial)
-#     print("")
+    print(best_trial)
+    print("")
 
 
 ## Test winner further.
