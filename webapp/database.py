@@ -1,5 +1,6 @@
 """Connect to and build the qdrant database."""
 
+import os
 from typing import Any
 
 import datasets
@@ -10,7 +11,8 @@ import abstract2gene as a2g
 
 
 def connect() -> QdrantClient:
-    return QdrantClient(url="http://localhost:6333")
+    qdrant_domain = os.getenv("A2G_QDRANT_URL") or "localhost"
+    return QdrantClient(url=f"http://{qdrant_domain}:6333")
 
 
 def _generate_points(
@@ -66,4 +68,11 @@ def store_publications(
         for example in dataset
     ]
 
-    client.upsert(collection_name=collection_name, wait=True, points=points)
+    batch_size = 100
+    for i in range(0, len(points), batch_size):
+        fin = min(i + batch_size, len(points))
+        client.upsert(
+            collection_name=collection_name,
+            wait=False,
+            points=points[i:fin],
+        )

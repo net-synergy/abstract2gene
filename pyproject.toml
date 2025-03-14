@@ -5,7 +5,7 @@ description = "Classify abstracts with gene annotations"
 license = "MIT"
 repository = "https://github.com/net-synergy/abstract2gene"
 authors = [{name = "David Connell", email = "davidconnell12@gmail.com"}]
-packages = [{ include = "abstract2gene" }]
+packages = [{ include = "abstract2gene" }, { include = "webapp"}]
 requires-python = ">=3.11"
 
 dependencies = [
@@ -22,7 +22,6 @@ dependencies = [
     "pandas>=2.2.3",
     "plotnine>=0.14.5",
     "pubmedparser2>=2.1.2",
-    "qdrant-client>=1.12.1",
     "scikit-learn>=1.6.1",
     "scipy>=1.15.1",
     "sentence-transformers[train]>=3.4.0",
@@ -45,6 +44,11 @@ dev = [
     "pytest>=8.3.4",
     "python-lsp-ruff>=2.2.2",
     "python-lsp-server>=1.12.0",
+]
+
+app = [
+    "fastapi[standard]>=0.115.11",
+    "qdrant-client>=1.12.1",
 ]
 
 [tool.uv.sources]

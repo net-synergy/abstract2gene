@@ -1,0 +1,80 @@
+<html>
+  <head>
+    <title>A2G Search</title>
+    <link
+      rel="stylesheet"
+      href="https://stackpath.bootstrapcdn.com/bootstrap/4.5.0/css/bootstrap.min.css"
+    />
+  </head>
+  <body>
+    <div class="container mt-5">
+      <h1 class="text-center">abstract2gene</h1>
+      <h4>
+        Search with PMIDs (or <a href="/">search with a custom abstract)</a>
+      </h4>
+      <form method="GET" action="/results/pmid_search" id="searchForm">
+        <div class="form-group">
+          <label for="positive">Positive PMIDs</label>
+          <input
+            type="text"
+            class="form-control"
+            id="positive"
+            name="positive"
+            placeholder="Enter PMIDs of positive examples (comma separated)"
+          />
+        </div>
+        <div class="form-group">
+          <label for="title">Negative PMIDs</label>
+          <input
+            type="text"
+            class="form-control"
+            id="negative"
+            name="negative"
+            placeholder="Enter PMIDs to avoid (comma separated)"
+          />
+        </div>
+        <div class="form-group">
+          <label for="year_min">Search range</label>
+          <div class="row">
+            <div class="col">
+              <input
+                type="number"
+                class="form-control"
+                id="year_min"
+                name="year_min"
+                min="{{ year_range.min_year }}"
+                value="{{ year_range.min_year }}"
+              />
+            </div>
+            <div class="col">
+              <input
+                type="number"
+                class="form-control"
+                id="year_max"
+                name="year_max"
+                max="{{ year_range.max_year }}"
+                value="{{ year_range.max_year }}"
+              />
+            </div>
+          </div>
+        </div>
+        <button type="submit" class="btn btn-primary">Search</button>
+      </form>
+    </div>
+    <script>
+      document.getElementById('searchForm').addEventListener('submit', function(event) {
+	  event.preventDefault(); // Prevent the default form submission
+
+	  var positivePMIDs = document.getElementById('positive').value;
+	  var negativePMIDs = document.getElementById('negative').value;
+	  var yearMin = document.getElementById('year_min').value;
+	  var yearMax = document.getElementById('year_max').value;
+
+	  // Build the URL with query parameters
+	  var url = '/results/pmid_search?positives=' + positivePMIDs + '&negatives=' + negativePMIDs + '&year_min=' + yearMin + '&year_max=' + yearMax;
+
+	  window.location.href = url; // Redirect to the new page
+      });
+      </script>
+  </body>
+</html>

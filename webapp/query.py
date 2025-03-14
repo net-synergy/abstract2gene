@@ -1,10 +1,21 @@
 """Methods for querying and searching the database."""
 
+__all__ = ["search_with_abstract", "get_min_year"]
+
 import numpy as np
 from qdrant_client import QdrantClient
 from qdrant_client.models import FieldCondition, Filter, Range, ScoredPoint
 
 import abstract2gene as a2g
+
+
+def get_min_year(client: QdrantClient, collection_name: str) -> int:
+    """Find the earliest publication year in the database."""
+    scroll = client.scroll(
+        collection_name=collection_name, with_payload=True, with_vectors=False
+    )[0]
+
+    return min((point.payload["year"] for point in scroll if point.payload))
 
 
 def search_with_abstract(
@@ -17,6 +28,7 @@ def search_with_abstract(
 ) -> list[ScoredPoint]:
     """Find publications with similar genetic components to an abstract."""
     prediction = model.predict(title + "[SEP]" + abstract).tolist()[0]
+
     return client.search(
         collection_name=collection_name,
         query_vector=prediction,
@@ -76,6 +88,9 @@ def analyze_references(
         client, collection_name, parent.payload["reference"]
     )
 
+    if len(ref_ids) == 0:
+        return {"parent": parent, "references": [], "scores": []}
+
     references = client.retrieve(
         collection_name=collection_name,
         ids=ref_ids,
@@ -83,7 +98,7 @@ def analyze_references(
         with_vectors=True,
     )
 
-    parent_vec = np.asarray(parent.vector)
+    parent_vec = np.asarray(parent.vector)[None, :]
     parent_vec = parent_vec / np.linalg.norm(parent_vec, axis=1, keepdims=True)
     ref_vecs = np.vstack([np.asarray(ref.vector) for ref in references])
     parent_vec = ref_vecs / np.linalg.norm(ref_vecs, axis=1, keepdims=True)
