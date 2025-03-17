@@ -2,3 +2,5 @@
 
 model_name = "a2g_768dim_per_batch_2"
 collection_name = f"gene_predictions_{model_name}"
+min_genes = 5
+gene_thresh = 0.5

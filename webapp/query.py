@@ -25,23 +25,28 @@ def search_with_abstract(
     abstract: str,
     year: tuple[int, int],
     collection_name: str,
-) -> list[ScoredPoint]:
+) -> tuple[list[float], list[ScoredPoint]]:
     """Find publications with similar genetic components to an abstract."""
     prediction = model.predict(title + "[SEP]" + abstract).tolist()[0]
 
-    return client.search(
-        collection_name=collection_name,
-        query_vector=prediction,
-        query_filter=Filter(
-            must=[
-                FieldCondition(
-                    key="year", range=Range(gte=year[0], lte=year[1])
-                )
-            ]
+    return (
+        prediction,
+        client.search(
+            collection_name=collection_name,
+            query_vector=prediction,
+            query_filter=Filter(
+                must=[
+                    FieldCondition(
+                        key="year", range=Range(gte=year[0], lte=year[1])
+                    )
+                ]
+            ),
+            with_payload=True,
+            with_vectors=True,
+            ## TODO: Come up with p-value based method for determining which
+            ## references to return instead of static limit.
+            limit=10,
         ),
-        ## TODO: Come up with p-value based method for determining which
-        ## references to return instead of static limit.
-        limit=10,
     )
 
 

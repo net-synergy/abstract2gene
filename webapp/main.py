@@ -1,5 +1,7 @@
 """Entry point for the search engine's web UI."""
 
+import json
+import os
 from datetime import datetime
 from typing import Annotated
 
@@ -9,6 +11,7 @@ from fastapi.staticfiles import StaticFiles
 
 import abstract2gene as a2g
 import webapp.config as cfg
+from abstract2gene.data import model_path
 from webapp import database, query, ui
 
 model: a2g.model.Model | None = None
@@ -27,12 +30,18 @@ ModelDep = Annotated[a2g.model.Model, Depends(get_model)]
 client = database.connect()
 min_year = query.get_min_year(client, cfg.collection_name)
 
+with open(os.path.join(model_path(cfg.model_name), "genes.json"), "r") as js:
+    genes = json.load(js)
+
 app = FastAPI()
 app.mount("/static", StaticFiles(directory="webapp/static"), name="static")
 
 
 if not client.collection_exists(cfg.collection_name):
-    raise RuntimeError("qdrant collection not found")
+    raise RuntimeError(
+        "qdrant collection not found. This might be due to changing the"
+        + " model after building the collection. Rerun the populate db script."
+    )
 
 
 @app.get("/", response_class=HTMLResponse)
@@ -61,6 +70,7 @@ def post_abstract_search(
         title,
         abstract,
         (year_min, year_max),
+        genes,
         cfg.collection_name,
     )
 
@@ -89,10 +99,13 @@ def post_pmid_search(
         positive_list,
         negative_list,
         (year_min, year_max),
+        genes,
         cfg.collection_name,
     )
 
 
 @app.get("/analyze/{pmid}")
 def analyze_references(request: Request, pmid: int):
-    return ui.analyze_references(request, client, pmid, cfg.collection_name)
+    return ui.analyze_references(
+        request, client, pmid, genes, cfg.collection_name
+    )

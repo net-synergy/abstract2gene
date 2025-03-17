@@ -10,9 +10,17 @@ from qdrant_client import QdrantClient
 from qdrant_client.models import FieldCondition, Filter, Range
 
 import abstract2gene as a2g
+from webapp import config as cfg
 from webapp import query
+from webapp.genes import Gene, top_predictions
 
 templates = Jinja2Templates(directory="webapp/templates")
+
+
+def _top_preds(predictions: list[float], genes: Gene) -> dict[str, list[str]]:
+    return top_predictions(
+        predictions, genes, k=cfg.min_genes, p=cfg.gene_thresh
+    )
 
 
 def home(request: Request, min_year: int):
@@ -68,22 +76,32 @@ def results(
     title: str,
     abstract: str,
     year: tuple[int, int],
+    genes: Gene,
     collection_name: str,
 ):
-    points = query.search_with_abstract(
+    prediction, points = query.search_with_abstract(
         client, model, title, abstract, year, collection_name
     )
 
     if points is None or len(points) == 0:
         return "No results found."
 
+    top_genes = _top_preds(prediction, genes)
+
     results = _extract_points(points)
+    for i, pt in enumerate(points):
+        results[i]["genes"] = _top_preds(pt.vector, genes)
+
     return templates.TemplateResponse(
         request,
         name="a2g_results.html",
         context={
             "action_title": "Publications similar to: ",
-            "parent": {"title": title, "abstract": abstract},
+            "parent": {
+                "title": title,
+                "abstract": abstract,
+                "genes": top_genes,
+            },
             "results": results,
             "year_range": {"min_year": year[0], "max_year": year[1]},
         },
@@ -96,13 +114,14 @@ def search_pmid(
     positive: list[int],
     negative: list[int],
     year: tuple[int, int],
+    genes: Gene,
     collection_name: str,
 ):
     if not positive:
         return "Must provide at least one positive example."
 
     positive_points = client.retrieve(
-        collection_name, ids=positive, with_payload=True, with_vectors=False
+        collection_name, ids=positive, with_payload=True, with_vectors=True
     )
 
     negative_points = []
@@ -124,11 +143,14 @@ def search_pmid(
         return f"No publication with PMID: {positive[0]} in database."
 
     main_point = positive_points[0]
+    top_genes = _top_preds(main_point.vector, genes)
 
     points = client.recommend(
         collection_name,
         positive,
         negative,
+        with_payload=True,
+        with_vectors=True,
         query_filter=Filter(
             must=[
                 FieldCondition(
@@ -145,9 +167,13 @@ def search_pmid(
         return "No results found."
 
     results = _extract_points(points)
+    for i, pt in enumerate(points):
+        results[i]["genes"] = _top_preds(pt.vector, genes)
+
     parent = {
         "title": main_point.payload["title"],
         "abstract": main_point.payload["abstract"],
+        "genes": top_genes,
     }
 
     return templates.TemplateResponse(
@@ -163,12 +189,17 @@ def search_pmid(
 
 
 def analyze_references(
-    request: Request, client: QdrantClient, pmid: int, collection_name: str
+    request: Request,
+    client: QdrantClient,
+    pmid: int,
+    genes: Gene,
+    collection_name: str,
 ):
     results = query.analyze_references(client, pmid, collection_name)
     parent = {
         "title": results["parent"].payload["title"],
         "abstract": results["parent"].payload["abstract"],
+        "genes": _top_preds(results["parent"].vector, genes),
     }
 
     if len(results["references"]) == 0:
@@ -178,6 +209,9 @@ def analyze_references(
     references = sorted(
         references, key=lambda x: x["similarity"], reverse=True
     )
+
+    for i, pt in enumerate(results["references"]):
+        references[i]["genes"] = _top_preds(pt.vector, genes)
 
     return templates.TemplateResponse(
         request,
