@@ -7,7 +7,7 @@ from datetime import datetime
 from typing import Annotated
 
 from fastapi import Depends, FastAPI, Form, Request
-from fastapi.responses import HTMLResponse, RedirectResponse
+from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 
 import abstract2gene as a2g
@@ -49,6 +49,18 @@ if not client.collection_exists(cfg.collection_name):
 def shutdown_event():
     if client.collection_exists(cfg.tmp_collection_name):
         client.delete_collection(cfg.tmp_collection_name)
+
+
+@app.middleware("http")
+async def validate_ip(request: Request, call_next):
+    ip = str(request.client.host)
+
+    if len(cfg.ip_whitelist) and (ip not in cfg.ip_whitelist):
+        return JSONResponse(
+            {"message": f"Unauthorized IP address {ip}"}, status_code=401
+        )
+
+    return await call_next(request)
 
 
 @app.get("/", response_class=HTMLResponse)

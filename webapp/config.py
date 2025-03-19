@@ -6,3 +6,6 @@ tmp_collection_name = "user_predictions"
 min_genes = 5
 gene_thresh = 0.5
 results_per_page = 20
+
+# Leave empty to accept all IP addresses.
+ip_whitelist: list[str] = []
