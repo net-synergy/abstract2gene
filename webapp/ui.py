@@ -72,16 +72,39 @@ def _extract_points(points):
 def results(
     request: Request,
     client: QdrantClient,
-    model: a2g.model.Model,
-    title: str,
-    abstract: str,
+    session_id: str,
     year: tuple[int, int],
+    page: int,
     genes: Gene,
     collection_name: str,
 ):
-    prediction, points = query.search_with_abstract(
-        client, model, title, abstract, year, collection_name
+    point = client.retrieve(
+        cfg.tmp_collection_name,
+        [session_id],
+        with_payload=True,
+        with_vectors=True,
     )
+
+    if (len(point) == 0) or (not point[0].payload):
+        return f"Server error: session {session_id} not cached."
+
+    prediction = point[0].vector
+    title = point[0].payload["title"]
+    abstract = point[0].payload["abstract"]
+
+    prediction, points = query.search_with_abstract(
+        client,
+        prediction,
+        title,
+        abstract,
+        year,
+        page,
+        collection_name,
+    )
+
+    last_page = (page * cfg.results_per_page) >= client.count(
+        collection_name
+    ).count
 
     if points is None or len(points) == 0:
         return "No results found."
@@ -104,6 +127,9 @@ def results(
             },
             "results": results,
             "year_range": {"min_year": year[0], "max_year": year[1]},
+            "page": page,
+            "last_page": last_page,
+            "session_id": session_id,
         },
     )
 
@@ -114,6 +140,7 @@ def search_pmid(
     positive: list[int],
     negative: list[int],
     year: tuple[int, int],
+    page: int,
     genes: Gene,
     collection_name: str,
 ):
@@ -158,10 +185,12 @@ def search_pmid(
                 )
             ]
         ),
-        ## TODO: Come up with p-value based method for determining which
-        ## references to return instead of static limit.
-        limit=10,
+        limit=cfg.results_per_page,
+        offset=(page - 1) * cfg.results_per_page,
     )
+    last_page = (page * cfg.results_per_page) >= client.count(
+        collection_name
+    ).count
 
     if points is None or len(points) == 0:
         return "No results found."
@@ -184,6 +213,8 @@ def search_pmid(
             "parent": parent,
             "results": results,
             "year_range": {"min_year": year[0], "max_year": year[1]},
+            "page": page,
+            "last_page": last_page,
         },
     )
 

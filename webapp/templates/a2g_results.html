@@ -55,7 +55,7 @@
             <br />
             <p>{{ result.abstract }}</p>
             <a
-              href="/results/pmid_search?positives={{ result.pmid }}"
+              href="/results/pmid_search?positives={{ result.pmid }}&year_min={{ year_range.min_year }}&year_max={{ year_range.max_year }}"
               role="button"
               class="btn btn-primary btn-return-home"
               >Search</a
@@ -80,5 +80,27 @@
         {% endfor %}
       </tbody>
     </table>
+
+    <div style="margin-top: 20px; margin-bottom: 20px; display: flex; justify-content: center; gap: 10px; ">
+      {% if session_id %}
+	{% set base_url = request.url_for("user_input", session_id=session_id) %}
+	{% set positives = "" %}
+	{% set negatives = "" %}
+      {% else %}
+	{% set base_url = request.url_for("pmid_search") %}
+	{% set positives = "&positives=" ~ (request.query_params['positives'] | string) %}
+	{% set negatives = "&negatives=" ~ (request.query_params['negatives'] | string) %}
+      {% endif %}
+      {% if page > 2 %}
+	<a href="{{ base_url }}?year_min={{ request.query_params['year_min'] }}&year_max={{ request.query_params['year_max'] }}{{ positives }}{{ negatives }}" class="btn btn-primary">First</a>
+      {% endif %}
+      {% if page > 1 %}
+	<a href="{{ base_url }}?year_min={{ request.query_params['year_min'] }}&year_max={{ request.query_params['year_max'] }}{{ positives }}{{ negatives }}&page={{ page - 1 }}" class="btn btn-primary">Prev</a>
+      {% endif %}
+      <h3 style="margin-left: 0px;">{{ page }}</h3>
+      {% if not last_page %}
+	<a href="{{ base_url }}?year_min={{ request.query_params['year_min'] }}&year_max={{ request.query_params['year_max'] }}{{ positives }}{{ negatives }}&page={{ page + 1 }}" class="btn btn-primary">Next</a>
+      {% endif %}
+    </div>
   </body>
 </html>

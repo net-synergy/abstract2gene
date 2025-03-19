@@ -7,6 +7,7 @@ from qdrant_client import QdrantClient
 from qdrant_client.models import FieldCondition, Filter, Range, ScoredPoint
 
 import abstract2gene as a2g
+from webapp import config as cfg
 
 
 def get_min_year(client: QdrantClient, collection_name: str) -> int:
@@ -20,15 +21,14 @@ def get_min_year(client: QdrantClient, collection_name: str) -> int:
 
 def search_with_abstract(
     client: QdrantClient,
-    model: a2g.model.Model,
+    prediction: list[float],
     title: str,
     abstract: str,
     year: tuple[int, int],
+    page: int,
     collection_name: str,
 ) -> tuple[list[float], list[ScoredPoint]]:
     """Find publications with similar genetic components to an abstract."""
-    prediction = model.predict(title + "[SEP]" + abstract).tolist()[0]
-
     return (
         prediction,
         client.search(
@@ -43,9 +43,8 @@ def search_with_abstract(
             ),
             with_payload=True,
             with_vectors=True,
-            ## TODO: Come up with p-value based method for determining which
-            ## references to return instead of static limit.
-            limit=10,
+            limit=cfg.results_per_page,
+            offset=(page - 1) * cfg.results_per_page,
         ),
     )
 

@@ -2,11 +2,12 @@
 
 import json
 import os
+import uuid
 from datetime import datetime
 from typing import Annotated
 
 from fastapi import Depends, FastAPI, Form, Request
-from fastapi.responses import HTMLResponse
+from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 
 import abstract2gene as a2g
@@ -44,6 +45,12 @@ if not client.collection_exists(cfg.collection_name):
     )
 
 
+@app.on_event("shutdown")
+def shutdown_event():
+    if client.collection_exists(cfg.tmp_collection_name):
+        client.delete_collection(cfg.tmp_collection_name)
+
+
 @app.get("/", response_class=HTMLResponse)
 def abstract2gene(request: Request):
     return ui.home(request, min_year)
@@ -63,25 +70,47 @@ def post_abstract_search(
     year_min: int = Form(...),
     year_max: int = Form(...),
 ):
+    if not client.collection_exists(cfg.tmp_collection_name):
+        database.init_db(client, model, cfg.tmp_collection_name)
+
+    session_id = uuid.uuid4().hex
+    database.store_user_abstracts(
+        client, model, title, abstract, session_id, cfg.tmp_collection_name
+    )
+
+    return RedirectResponse(
+        f"/results/user_input/{session_id}?year_min={year_min}&year_max={year_max}&page=1",
+        status_code=302,
+    )
+
+
+@app.get("/results/user_input/{session_id}", name="user_input")
+def get_abstract_search(
+    request: Request,
+    session_id: str,
+    year_min: int = min_year,
+    year_max: int = datetime.today().year,
+    page: int = 1,
+):
     return ui.results(
         request,
         client,
-        model,
-        title,
-        abstract,
+        session_id,
         (year_min, year_max),
+        page,
         genes,
         cfg.collection_name,
     )
 
 
-@app.get("/results/pmid_search")
-def post_pmid_search(
+@app.get("/results/pmid_search", name="pmid_search")
+def get_pmid_search(
     request: Request,
     positives: str,
     negatives: str = "",
     year_min: int = min_year,
     year_max: int = datetime.today().year,
+    page: int = 1,
 ):
 
     if not positives:
@@ -99,6 +128,7 @@ def post_pmid_search(
         positive_list,
         negative_list,
         (year_min, year_max),
+        page,
         genes,
         cfg.collection_name,
     )

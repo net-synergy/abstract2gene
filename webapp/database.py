@@ -76,3 +76,31 @@ def store_publications(
             wait=False,
             points=points[i:fin],
         )
+
+
+def store_user_abstracts(
+    client: QdrantClient,
+    model: a2g.model.Model,
+    title: str,
+    abstract: str,
+    session_id: str,
+    collection_name: str,
+):
+    prediction = model.predict(f"{title}[SEP]{abstract}").tolist()
+
+    point = [
+        PointStruct(
+            id=session_id,
+            vector=prediction,
+            payload={
+                "title": title,
+                "abstract": abstract,
+            },
+        )
+    ]
+
+    client.upsert(
+        collection_name=collection_name,
+        wait=True,
+        points=point,
+    )
