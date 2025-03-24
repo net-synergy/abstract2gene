@@ -14,8 +14,7 @@ model_name = "a2g_768dim_per_batch_16"
 min_genes = 5
 gene_thresh = 0.5
 results_per_page = 20
-algorithm = "HS256"
-access_token_expire_time = 3600 * 24
+use_auth = True
 
 if "engine" in conf:
     model_name = conf["engine"].get("model_name", model_name)
@@ -25,6 +24,9 @@ if "ui" in conf:
     min_genes = ui.get("min_genes_displayed", min_genes)
     gene_thresh = ui.get("gene_thresh", gene_thresh)
     results_per_page = ui.get("results_per_page", results_per_page)
+
+if "auth" in conf:
+    use_auth = conf["auth"].get("enabled", use_auth)
 
 # Don't think these need to be modified by user
 collection_name = f"gene_predictions_{model_name}"

@@ -15,12 +15,9 @@ RUN --mount=type=cache,target=/root/.cache \
   uv python pin 3.12 && \
   uv sync --group app
 
-RUN cat <<__EOF__ > startup.sh
-#! /usr/bin/env bash
-
-uv run python populate_db.py
-uv run fastapi dev --host=0.0.0.0 webapp/main.py
-__EOF__
+RUN echo "#! /usr/bin/env bash" > startup.sh && \
+    echo "uv run python populate_db.py" >> startup.sh && \
+    echo "uv run fastapi dev --host=0.0.0.0 webapp/main.py" >> startup.sh
 
 RUN chmod u+x startup.sh
 
