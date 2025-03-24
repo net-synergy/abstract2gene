@@ -48,6 +48,8 @@ dev = [
 
 app = [
     "fastapi[standard]>=0.115.11",
+    "itsdangerous>=2.2.0",
+    "passlib[bcrypt]>=1.7.4",
     "qdrant-client>=1.12.1",
 ]
 

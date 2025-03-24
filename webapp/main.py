@@ -6,14 +6,14 @@ import uuid
 from datetime import datetime
 from typing import Annotated
 
-from fastapi import Depends, FastAPI, Form, Request
-from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
+from fastapi import APIRouter, Depends, FastAPI, Form, Request
+from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 
 import abstract2gene as a2g
 import webapp.config as cfg
 from abstract2gene.data import model_path
-from webapp import database, query, ui
+from webapp import auth, database, query, ui
 
 model: a2g.model.Model | None = None
 
@@ -34,9 +34,10 @@ min_year = query.get_min_year(client, cfg.collection_name)
 with open(os.path.join(model_path(cfg.model_name), "genes.json"), "r") as js:
     genes = json.load(js)
 
-app = FastAPI()
-app.mount("/static", StaticFiles(directory="webapp/static"), name="static")
-
+main_router = APIRouter(dependencies=[Depends(auth.is_authorized)])
+main_router.mount(
+    "/static", StaticFiles(directory="webapp/static"), name="static"
+)
 
 if not client.collection_exists(cfg.collection_name):
     raise RuntimeError(
@@ -45,35 +46,17 @@ if not client.collection_exists(cfg.collection_name):
     )
 
 
-@app.on_event("shutdown")
-def shutdown_event():
-    if client.collection_exists(cfg.tmp_collection_name):
-        client.delete_collection(cfg.tmp_collection_name)
-
-
-@app.middleware("http")
-async def validate_ip(request: Request, call_next):
-    ip = str(request.client.host)
-
-    if len(cfg.ip_whitelist) and (ip not in cfg.ip_whitelist):
-        return JSONResponse(
-            {"message": f"Unauthorized IP address {ip}"}, status_code=401
-        )
-
-    return await call_next(request)
-
-
-@app.get("/", response_class=HTMLResponse)
+@main_router.get("/", response_class=HTMLResponse)
 def abstract2gene(request: Request):
     return ui.home(request, min_year)
 
 
-@app.get("/pmid_search", response_class=HTMLResponse)
+@main_router.get("/pmid_search", response_class=HTMLResponse)
 def pmid_search_page(request: Request):
     return ui.pmid_search_page(request, min_year)
 
 
-@app.post("/results/user_input", name="search")
+@main_router.post("/results/user_input", name="search")
 def post_abstract_search(
     request: Request,
     model: ModelDep,
@@ -96,7 +79,7 @@ def post_abstract_search(
     )
 
 
-@app.get("/results/user_input/{session_id}", name="user_input")
+@main_router.get("/results/user_input/{session_id}", name="user_input")
 def get_abstract_search(
     request: Request,
     session_id: str,
@@ -115,7 +98,7 @@ def get_abstract_search(
     )
 
 
-@app.get("/results/pmid_search", name="pmid_search")
+@main_router.get("/results/pmid_search", name="pmid_search")
 def get_pmid_search(
     request: Request,
     positives: str,
@@ -146,8 +129,19 @@ def get_pmid_search(
     )
 
 
-@app.get("/analyze/{pmid}")
+@main_router.get("/analyze/{pmid}")
 def analyze_references(request: Request, pmid: int):
     return ui.analyze_references(
         request, client, pmid, genes, cfg.collection_name
     )
+
+
+app = FastAPI()
+app.include_router(main_router)
+app.include_router(auth.router)
+
+
+@app.on_event("shutdown")
+def shutdown_event():
+    if client.collection_exists(cfg.tmp_collection_name):
+        client.delete_collection(cfg.tmp_collection_name)

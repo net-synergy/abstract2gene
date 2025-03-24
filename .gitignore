@@ -5,3 +5,5 @@ example_results/
 *.tsv
 tmp/
 qdrant/
+auth/
+site.toml
