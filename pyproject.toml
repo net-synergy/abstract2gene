@@ -53,6 +53,9 @@ app = [
     "qdrant-client>=1.12.1",
 ]
 
+[project.scripts]
+usergen = "example.usergen:main"
+
 [tool.uv.sources]
 speakeasy2 = { index = "testpypi" }
 
