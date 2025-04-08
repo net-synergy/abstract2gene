@@ -62,19 +62,29 @@
       </form>
     </div>
     <script>
-      document.getElementById('searchForm').addEventListener('submit', function(event) {
-	  event.preventDefault(); // Prevent the default form submission
+      document
+        .getElementById("searchForm")
+        .addEventListener("submit", function (event) {
+          event.preventDefault(); // Prevent the default form submission
 
-	  var positivePMIDs = document.getElementById('positive').value;
-	  var negativePMIDs = document.getElementById('negative').value;
-	  var yearMin = document.getElementById('year_min').value;
-	  var yearMax = document.getElementById('year_max').value;
+          var positivePMIDs = document.getElementById("positive").value;
+          var negativePMIDs = document.getElementById("negative").value;
+          var yearMin = document.getElementById("year_min").value;
+          var yearMax = document.getElementById("year_max").value;
 
-	  // Build the URL with query parameters
-	  var url = '/results/pmid_search?positives=' + positivePMIDs + '&negatives=' + negativePMIDs + '&year_min=' + yearMin + '&year_max=' + yearMax;
+          // Build the URL with query parameters
+          var url =
+            "/results/pmid_search?positives=" +
+            positivePMIDs +
+            "&negatives=" +
+            negativePMIDs +
+            "&year_min=" +
+            yearMin +
+            "&year_max=" +
+            yearMax;
 
-	  window.location.href = url; // Redirect to the new page
-      });
-      </script>
+          window.location.href = url; // Redirect to the new page
+        });
+    </script>
   </body>
 </html>

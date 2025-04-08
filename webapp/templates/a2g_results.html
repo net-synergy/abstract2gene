@@ -16,11 +16,14 @@
             <h4>{{ parent.title }}</h4>
             <p>
               Genes: {% for i in range(parent.genes["symbol"]|length) %}
-	      <a href="https://www.ncbi.nlm.nih.gov/gene/{{ parent.genes['entrez_id'][i] }}">
-		{{ parent.genes['symbol'][i] }} ({{ parent.genes['prediction'][i] }})
-	      </a>
-	      {% if (i + 1) < parent.genes["symbol"]|length %}, {% endif %}
-	      {% endfor %}
+              <a
+                href="https://www.ncbi.nlm.nih.gov/gene/{{ parent.genes['entrez_id'][i] }}"
+              >
+                {{ parent.genes['symbol'][i] }} ({{
+                parent.genes['prediction'][i] }})
+              </a>
+              {% if (i + 1) < parent.genes["symbol"]|length %}, {% endif %} {%
+              endfor %}
             </p>
             <br />
             <p>{{ parent.abstract }}</p>
@@ -44,13 +47,16 @@
           <td>
             <h4>{{ result.title }}</h4>
             <p>
-	      Year: {{ result.year }}<br />
-	      Genes: {% for i in range(result.genes["symbol"]|length) %}
-	      <a href="https://www.ncbi.nlm.nih.gov/gene/{{ result.genes['entrez_id'][i] }}">
-		{{ result.genes['symbol'][i] }} ({{ result.genes['prediction'][i] }})
-	      </a>
-	      {% if (i + 1) < result.genes["symbol"]|length %}, {% endif %}
-	      {% endfor %}
+              Year: {{ result.year }}<br />
+              Genes: {% for i in range(result.genes["symbol"]|length) %}
+              <a
+                href="https://www.ncbi.nlm.nih.gov/gene/{{ result.genes['entrez_id'][i] }}"
+              >
+                {{ result.genes['symbol'][i] }} ({{
+                result.genes['prediction'][i] }})
+              </a>
+              {% if (i + 1) < result.genes["symbol"]|length %}, {% endif %} {%
+              endfor %}
             </p>
             <br />
             <p>{{ result.abstract }}</p>
@@ -81,25 +87,40 @@
       </tbody>
     </table>
 
-    <div style="margin-top: 20px; margin-bottom: 20px; display: flex; justify-content: center; gap: 10px; ">
-      {% if session_id %}
-	{% set base_url = request.url_for("user_input", session_id=session_id) %}
-	{% set positives = "" %}
-	{% set negatives = "" %}
-      {% else %}
-	{% set base_url = request.url_for("pmid_search") %}
-	{% set positives = "&positives=" ~ (request.query_params['positives'] | string) %}
-	{% set negatives = "&negatives=" ~ (request.query_params['negatives'] | string) %}
+    <div
+      style="
+        margin-top: 20px;
+        margin-bottom: 20px;
+        display: flex;
+        justify-content: center;
+        gap: 10px;
+      "
+    >
+      {% if session_id %} {% set base_url = request.url_for("user_input",
+      session_id=session_id) %} {% set positives = "" %} {% set negatives = ""
+      %} {% else %} {% set base_url = request.url_for("pmid_search") %} {% set
+      positives = "&positives=" ~ (request.query_params['positives'] | string)
+      %} {% set negatives = "&negatives=" ~ (request.query_params['negatives'] |
+      string) %} {% endif %} {% if page > 2 %}
+      <a
+        href="{{ base_url }}?year_min={{ request.query_params['year_min'] }}&year_max={{ request.query_params['year_max'] }}{{ positives }}{{ negatives }}"
+        class="btn btn-primary"
+        >First</a
+      >
+      {% endif %} {% if page > 1 %}
+      <a
+        href="{{ base_url }}?year_min={{ request.query_params['year_min'] }}&year_max={{ request.query_params['year_max'] }}{{ positives }}{{ negatives }}&page={{ page - 1 }}"
+        class="btn btn-primary"
+        >Prev</a
+      >
       {% endif %}
-      {% if page > 2 %}
-	<a href="{{ base_url }}?year_min={{ request.query_params['year_min'] }}&year_max={{ request.query_params['year_max'] }}{{ positives }}{{ negatives }}" class="btn btn-primary">First</a>
-      {% endif %}
-      {% if page > 1 %}
-	<a href="{{ base_url }}?year_min={{ request.query_params['year_min'] }}&year_max={{ request.query_params['year_max'] }}{{ positives }}{{ negatives }}&page={{ page - 1 }}" class="btn btn-primary">Prev</a>
-      {% endif %}
-      <h3 style="margin-left: 0px;">{{ page }}</h3>
+      <h3 style="margin-left: 0px">{{ page }}</h3>
       {% if not last_page %}
-	<a href="{{ base_url }}?year_min={{ request.query_params['year_min'] }}&year_max={{ request.query_params['year_max'] }}{{ positives }}{{ negatives }}&page={{ page + 1 }}" class="btn btn-primary">Next</a>
+      <a
+        href="{{ base_url }}?year_min={{ request.query_params['year_min'] }}&year_max={{ request.query_params['year_max'] }}{{ positives }}{{ negatives }}&page={{ page + 1 }}"
+        class="btn btn-primary"
+        >Next</a
+      >
       {% endif %}
     </div>
   </body>
