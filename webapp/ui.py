@@ -7,7 +7,7 @@ from datetime import datetime
 from fastapi import Request
 from fastapi.templating import Jinja2Templates
 from qdrant_client import QdrantClient
-from qdrant_client.models import FieldCondition, Filter, Range
+from qdrant_client.models import Filter
 
 import abstract2gene as a2g
 from webapp import config as cfg
@@ -62,6 +62,7 @@ def _extract_points(points):
                 "pmid",
                 "similarity",
                 "reference",
+                "pubtator3_genes",
             )
         }
         for point in points
@@ -74,6 +75,8 @@ def results(
     client: QdrantClient,
     session_id: str,
     year: tuple[int, int],
+    behavioral: bool,
+    molecular: bool,
     page: int,
     genes: Gene,
     collection_name: str,
@@ -98,16 +101,18 @@ def results(
         title,
         abstract,
         year,
+        behavioral,
+        molecular,
         page,
         collection_name,
     )
 
     last_page = (page * cfg.results_per_page) >= client.count(
-        collection_name
+        collection_name,
+        count_filter=Filter(
+            must=query.query_filters(year, behavioral, molecular),
+        ),
     ).count
-
-    if points is None or len(points) == 0:
-        return "No results found."
 
     top_genes = _top_preds(prediction, genes)
 
@@ -140,6 +145,8 @@ def search_pmid(
     positive: list[int],
     negative: list[int],
     year: tuple[int, int],
+    behavioral: bool,
+    molecular: bool,
     page: int,
     genes: Gene,
     collection_name: str,
@@ -172,28 +179,21 @@ def search_pmid(
     main_point = positive_points[0]
     top_genes = _top_preds(main_point.vector, genes)
 
+    query_filter = query.query_filters(year, behavioral, molecular)
     points = client.recommend(
         collection_name,
         positive,
         negative,
         with_payload=True,
         with_vectors=True,
-        query_filter=Filter(
-            must=[
-                FieldCondition(
-                    key="year", range=Range(gte=year[0], lte=year[1])
-                )
-            ]
-        ),
+        query_filter=Filter(must=query_filter),
         limit=cfg.results_per_page,
         offset=(page - 1) * cfg.results_per_page,
     )
     last_page = (page * cfg.results_per_page) >= client.count(
-        collection_name
+        collection_name,
+        count_filter=Filter(must=query_filter),
     ).count
-
-    if points is None or len(points) == 0:
-        return "No results found."
 
     results = _extract_points(points)
     for i, pt in enumerate(points):
@@ -223,10 +223,14 @@ def analyze_references(
     request: Request,
     client: QdrantClient,
     pmid: int,
+    behavioral: bool,
+    molecular: bool,
     genes: Gene,
     collection_name: str,
 ):
-    results = query.analyze_references(client, pmid, collection_name)
+    results = query.analyze_references(
+        client, pmid, behavioral, molecular, collection_name
+    )
     parent = {
         "title": results["parent"].payload["title"],
         "abstract": results["parent"].payload["abstract"],

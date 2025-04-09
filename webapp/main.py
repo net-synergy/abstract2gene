@@ -31,6 +31,28 @@ ModelDep = Annotated[a2g.model.Model, Depends(get_model)]
 client = database.connect()
 min_year = query.get_min_year(client, cfg.collection_name)
 
+
+def _parse_years(year_min: int, year_max: int) -> tuple[int, int]:
+    """Determine the range of years to filter.
+
+    If year min and year max are both > 0, they are treated like specific
+    years.
+    If year min is 0, don't filter, return all publications.
+    If year min is negative, treat as relative to the current year. I.e. the
+    range should be from current year - min year to current year.
+    """
+    if year_min <= 0:
+        year_max = datetime.today().year
+
+    if year_min == 0:
+        year_min = min_year
+
+    if year_min < 0:
+        year_min = year_max - abs(year_min)
+
+    return (year_min, year_max)
+
+
 with open(os.path.join(model_path(cfg.model_name), "genes.json"), "r") as js:
     genes = json.load(js)
 
@@ -64,6 +86,8 @@ def post_abstract_search(
     abstract: str = Form(...),
     year_min: int = Form(...),
     year_max: int = Form(...),
+    molecular: bool = Form(...),
+    behavioral: bool = Form(...),
 ):
     if not client.collection_exists(cfg.tmp_collection_name):
         database.init_db(client, model, cfg.tmp_collection_name)
@@ -73,8 +97,11 @@ def post_abstract_search(
         client, model, title, abstract, session_id, cfg.tmp_collection_name
     )
 
+    base_url = "/results/user_input"
     return RedirectResponse(
-        f"/results/user_input/{session_id}?year_min={year_min}&year_max={year_max}&page=1",
+        base_url
+        + f"/{session_id}?year_min={year_min}&year_max={year_max}"
+        + f"&page=1&molecular={molecular}&behavioral={behavioral}",
         status_code=302,
     )
 
@@ -86,12 +113,19 @@ def get_abstract_search(
     year_min: int = min_year,
     year_max: int = datetime.today().year,
     page: int = 1,
+    behavioral: bool = True,
+    molecular: bool = True,
 ):
+    print(year_min)
+    year_rng = _parse_years(year_min, year_max)
+    print(year_rng[0])
     return ui.results(
         request,
         client,
         session_id,
-        (year_min, year_max),
+        year_rng,
+        behavioral,
+        molecular,
         page,
         genes,
         cfg.collection_name,
@@ -106,7 +140,10 @@ def get_pmid_search(
     year_min: int = min_year,
     year_max: int = datetime.today().year,
     page: int = 1,
+    behavioral: bool = True,
+    molecular: bool = True,
 ):
+    year_rng = _parse_years(year_min, year_max)
 
     if not positives:
         return "Must provide at least one positive example."
@@ -122,7 +159,9 @@ def get_pmid_search(
         client,
         positive_list,
         negative_list,
-        (year_min, year_max),
+        year_rng,
+        behavioral,
+        molecular,
         page,
         genes,
         cfg.collection_name,
@@ -130,9 +169,20 @@ def get_pmid_search(
 
 
 @main_router.get("/analyze/{pmid}")
-def analyze_references(request: Request, pmid: int):
+def analyze_references(
+    request: Request,
+    pmid: int,
+    behavioral: bool = True,
+    molecular: bool = True,
+):
     return ui.analyze_references(
-        request, client, pmid, genes, cfg.collection_name
+        request,
+        client,
+        pmid,
+        behavioral,
+        molecular,
+        genes,
+        cfg.collection_name,
     )
 
 

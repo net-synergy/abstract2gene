@@ -12,7 +12,7 @@ services:
       - ./abstract2gene:/app/abstract2gene
       - ./webapp:/app/webapp
       - ${A2G_DATA_HOME}:/root/.local/share/abstract2gene
-      - ${HF_HOME}:/root/.cache/huggingface
+      - ${HF_CACHE}:/root/.cache/huggingface
       - ./auth:/root/.local/share/auth
       - ./site.toml:/app/site.toml
     environment:

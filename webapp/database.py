@@ -86,7 +86,7 @@ def store_user_abstracts(
     session_id: str,
     collection_name: str,
 ):
-    prediction = model.predict(f"{title}[SEP]{abstract}").tolist()
+    prediction = model.predict(f"{title}[SEP]{abstract}").tolist()[0]
 
     point = [
         PointStruct(

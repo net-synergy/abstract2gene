@@ -6,8 +6,67 @@
       href="https://stackpath.bootstrapcdn.com/bootstrap/4.5.0/css/bootstrap.min.css"
     />
     <link rel="stylesheet" href="/static/styles.css" />
+    <script>
+      function updateFormURL() {
+        const form = document.getElementById('filterForm');
+        const url = new URL(form.action, window.location.origin);
+        url.searchParams.set('behavioral', document.getElementById('behavioral').value);
+        url.searchParams.set('molecular', document.getElementById('molecular').value);
+        <!-- url.searchParams.set('year_min', document.getElementById('year_min').value); -->
+        form.action = url.toString();
+      }
+    </script>
   </head>
   <body>
+    <form id="filterForm" method="GET">
+      <fieldset>
+	<div style="margin-left: 10px">
+	  Search filters:
+	  <select
+	    name="behavioral"
+	    id="behavioral"
+	    aria-label="Behavioral"
+	    onchange="updateFormURL()">
+	    <option value="true"
+		    {% if request.query_params["behavioral"] == "true" %}
+		    selected="selected"
+		    {% endif %}>Behavioral: show</option>
+	    <option value="false"
+		    {% if request.query_params["behavioral"] == "false" %}
+		    selected="selected"
+		    {% endif %}>Behavioral: hide</option>
+	  </select>
+	  <select
+	    name="molecular"
+	    id="molecular"
+	    aria-label="Molecular"
+	    onchange="updateFormURL()">
+	    <option value="true"
+		    {% if request.query_params["molecular"] == "true" %}
+		    selected="selected"
+		    {% endif %}>Molecular: show</option>
+	    <option value="false"
+		    {% if request.query_params["molecular"] == "false" %}
+		    selected="selected"
+		    {% endif %}>Molecular: hide</option>
+	  </select>
+
+	  <!-- TODO: Consider date filter. -->
+	  <!-- <select -->
+	  <!--     name="year_min" -->
+	  <!--     id="year_min" -->
+	  <!--     aria-label="Year Min" -->
+	  <!--     onchange="updateFormURL()"> -->
+	  <!--     <option value="0" selected="selected">Any time</option> -->
+	  <!--     <option value="-1">Past year</option> -->
+	  <!--     <option value="-2">Past 2 years</option> -->
+	  <!--     <option value="-5">Past 5 years</option> -->
+	  <!--     <option value="-10">Past 10 years</option> -->
+	  <!--   </select> -->
+	  <button type="submit" id="filterSubmit" class="btn-return-home">Go</button>
+	</div>
+      </fieldset>
+    </form>
     <table class="table">
       <tr>
         <td>
@@ -28,9 +87,9 @@
             <br />
             <p>{{ parent.abstract }}</p>
           </div>
-          <a href="/" role="button" class="btn btn-primary btn-return-home"
-            >New search</a
-          >
+          <a href="/" role="button" class="btn btn-primary btn-return-home">
+	    New search
+	  </a><br />
         </td>
       </tr>
     </table>
@@ -48,6 +107,11 @@
             <h4>{{ result.title }}</h4>
             <p>
               Year: {{ result.year }}<br />
+              Type: {% if result.pubtator3_genes|length > 0 %}
+		Molecular
+		{% else %}
+		Behavioral
+		{% endif %}<br />
               Genes: {% for i in range(result.genes["symbol"]|length) %}
               <a
                 href="https://www.ncbi.nlm.nih.gov/gene/{{ result.genes['entrez_id'][i] }}"
@@ -103,13 +167,13 @@
       %} {% set negatives = "&negatives=" ~ (request.query_params['negatives'] |
       string) %} {% endif %} {% if page > 2 %}
       <a
-        href="{{ base_url }}?year_min={{ request.query_params['year_min'] }}&year_max={{ request.query_params['year_max'] }}{{ positives }}{{ negatives }}"
+        href="{{ base_url }}?year_min={{ request.query_params['year_min'] }}&year_max={{ request.query_params['year_max'] }}{{ positives }}{{ negatives }}&behavioral={{ request.query_params['behavioral'] }}&molecular={{ request.query_params['molecular'] }}"
         class="btn btn-primary"
         >First</a
       >
       {% endif %} {% if page > 1 %}
       <a
-        href="{{ base_url }}?year_min={{ request.query_params['year_min'] }}&year_max={{ request.query_params['year_max'] }}{{ positives }}{{ negatives }}&page={{ page - 1 }}"
+        href="{{ base_url }}?year_min={{ request.query_params['year_min'] }}&year_max={{ request.query_params['year_max'] }}{{ positives }}{{ negatives }}&page={{ page - 1 }}&behavioral={{ request.query_params['behavioral'] }}&molecular={{ request.query_params['molecular'] }}"
         class="btn btn-primary"
         >Prev</a
       >
@@ -117,7 +181,7 @@
       <h3 style="margin-left: 0px">{{ page }}</h3>
       {% if not last_page %}
       <a
-        href="{{ base_url }}?year_min={{ request.query_params['year_min'] }}&year_max={{ request.query_params['year_max'] }}{{ positives }}{{ negatives }}&page={{ page + 1 }}"
+        href="{{ base_url }}?year_min={{ request.query_params['year_min'] }}&year_max={{ request.query_params['year_max'] }}{{ positives }}{{ negatives }}&page={{ page + 1 }}&behavioral={{ request.query_params['behavioral'] }}&molecular={{ request.query_params['molecular'] }}"
         class="btn btn-primary"
         >Next</a
       >
