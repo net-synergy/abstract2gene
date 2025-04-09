@@ -132,7 +132,7 @@
 
       a2gEnv = python.withPackages (project.renderers.withPackages {
         inherit python;
-        groups = [ "dev" ];
+        groups = [ "dev" "app" ];
       });
     in {
       devShells.${system}.default = pkgs.mkShell {

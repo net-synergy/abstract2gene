@@ -4,3 +4,6 @@ example_results/
 *.png
 *.tsv
 tmp/
+qdrant/
+auth/
+site.toml

@@ -1,0 +1,106 @@
+"""Connect to and build the qdrant database."""
+
+import os
+from typing import Any
+
+import datasets
+from qdrant_client import QdrantClient
+from qdrant_client.models import Distance, PointStruct, VectorParams
+
+import abstract2gene as a2g
+
+
+def connect() -> QdrantClient:
+    qdrant_domain = os.getenv("A2G_QDRANT_URL") or "localhost"
+    return QdrantClient(url=f"http://{qdrant_domain}:6333")
+
+
+def _generate_points(
+    examples: dict[str, list[Any]], model: a2g.model.Model
+) -> dict[str, Any]:
+    abstracts = [
+        title + "[SEP]" + abstract
+        for title, abstract in zip(examples["title"], examples["abstract"])
+    ]
+    return {"prediction": list(model.predict(abstracts))}
+
+
+def init_db(
+    client: QdrantClient, model: a2g.model.Model, collection_name: str
+):
+    """Set up the gene vector collection."""
+    if model.templates is None:
+        raise RuntimeError("Templates not attached to this model.")
+
+    n_genes = model.templates.indices.shape[0]
+    client.create_collection(
+        collection_name=collection_name,
+        vectors_config=VectorParams(size=n_genes, distance=Distance.COSINE),
+    )
+
+
+def store_publications(
+    client: QdrantClient,
+    dataset: datasets,
+    model: a2g.model.Model,
+    collection_name: str,
+):
+    """Add publications from a dataset to the vector collection."""
+    dataset = dataset.map(
+        _generate_points,
+        fn_kwargs={"model": model},
+        batched=True,
+        batch_size=1000,
+    )
+
+    points = [
+        PointStruct(
+            id=example["pmid"],
+            vector=list(example["prediction"]),
+            payload={
+                "year": example["year"],
+                "title": example["title"],
+                "abstract": example["abstract"],
+                "pubtator3_genes": example["gene"],
+                "reference": example["reference"],
+            },
+        )
+        for example in dataset
+    ]
+
+    batch_size = 100
+    for i in range(0, len(points), batch_size):
+        fin = min(i + batch_size, len(points))
+        client.upsert(
+            collection_name=collection_name,
+            wait=False,
+            points=points[i:fin],
+        )
+
+
+def store_user_abstracts(
+    client: QdrantClient,
+    model: a2g.model.Model,
+    title: str,
+    abstract: str,
+    session_id: str,
+    collection_name: str,
+):
+    prediction = model.predict(f"{title}[SEP]{abstract}").tolist()[0]
+
+    point = [
+        PointStruct(
+            id=session_id,
+            vector=prediction,
+            payload={
+                "title": title,
+                "abstract": abstract,
+            },
+        )
+    ]
+
+    client.upsert(
+        collection_name=collection_name,
+        wait=True,
+        points=point,
+    )

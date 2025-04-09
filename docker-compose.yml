@@ -1,0 +1,33 @@
+version: "3.3"
+services:
+  abstract2gene:
+    build:
+      context: .
+    ports:
+      - "${A2G_PORT:-8080}:8000"
+    tty: true
+    depends_on:
+      - qdrant
+    volumes:
+      - ./abstract2gene:/app/abstract2gene
+      - ./webapp:/app/webapp
+      - ${A2G_DATA_HOME}:/root/.local/share/abstract2gene
+      - ${HF_CACHE}:/root/.cache/huggingface
+      - ./auth:/root/.local/share/auth
+      - ./site.toml:/app/site.toml
+    environment:
+      - A2G_QDRANT_URL=qdrant
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+
+  qdrant:
+    image: qdrant/qdrant:gpu-nvidia-latest
+    ports:
+      - "6333:6333"
+    volumes:
+      - ./qdrant:/qdrant/storage:z

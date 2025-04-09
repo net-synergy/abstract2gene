@@ -1,0 +1,191 @@
+<html>
+  <head>
+    <title>A2G Search</title>
+    <link
+      rel="stylesheet"
+      href="https://stackpath.bootstrapcdn.com/bootstrap/4.5.0/css/bootstrap.min.css"
+    />
+    <link rel="stylesheet" href="/static/styles.css" />
+    <script>
+      function updateFormURL() {
+        const form = document.getElementById('filterForm');
+        const url = new URL(form.action, window.location.origin);
+        url.searchParams.set('behavioral', document.getElementById('behavioral').value);
+        url.searchParams.set('molecular', document.getElementById('molecular').value);
+        <!-- url.searchParams.set('year_min', document.getElementById('year_min').value); -->
+        form.action = url.toString();
+      }
+    </script>
+  </head>
+  <body>
+    <form id="filterForm" method="GET">
+      <fieldset>
+	<div style="margin-left: 10px">
+	  Search filters:
+	  <select
+	    name="behavioral"
+	    id="behavioral"
+	    aria-label="Behavioral"
+	    onchange="updateFormURL()">
+	    <option value="true"
+		    {% if request.query_params["behavioral"] == "true" %}
+		    selected="selected"
+		    {% endif %}>Behavioral: show</option>
+	    <option value="false"
+		    {% if request.query_params["behavioral"] == "false" %}
+		    selected="selected"
+		    {% endif %}>Behavioral: hide</option>
+	  </select>
+	  <select
+	    name="molecular"
+	    id="molecular"
+	    aria-label="Molecular"
+	    onchange="updateFormURL()">
+	    <option value="true"
+		    {% if request.query_params["molecular"] == "true" %}
+		    selected="selected"
+		    {% endif %}>Molecular: show</option>
+	    <option value="false"
+		    {% if request.query_params["molecular"] == "false" %}
+		    selected="selected"
+		    {% endif %}>Molecular: hide</option>
+	  </select>
+
+	  <!-- TODO: Consider date filter. -->
+	  <!-- <select -->
+	  <!--     name="year_min" -->
+	  <!--     id="year_min" -->
+	  <!--     aria-label="Year Min" -->
+	  <!--     onchange="updateFormURL()"> -->
+	  <!--     <option value="0" selected="selected">Any time</option> -->
+	  <!--     <option value="-1">Past year</option> -->
+	  <!--     <option value="-2">Past 2 years</option> -->
+	  <!--     <option value="-5">Past 5 years</option> -->
+	  <!--     <option value="-10">Past 10 years</option> -->
+	  <!--   </select> -->
+	  <button type="submit" id="filterSubmit" class="btn-return-home">Go</button>
+	</div>
+      </fieldset>
+    </form>
+    <table class="table">
+      <tr>
+        <td>
+          <div style="margin-right: 60px">
+            <h3 style="margin-left: 0">{{ action_title }}</h3>
+            <h4>{{ parent.title }}</h4>
+            <p>
+              Genes: {% for i in range(parent.genes["symbol"]|length) %}
+              <a
+                href="https://www.ncbi.nlm.nih.gov/gene/{{ parent.genes['entrez_id'][i] }}"
+              >
+                {{ parent.genes['symbol'][i] }} ({{
+                parent.genes['prediction'][i] }})
+              </a>
+              {% if (i + 1) < parent.genes["symbol"]|length %}, {% endif %} {%
+              endfor %}
+            </p>
+            <br />
+            <p>{{ parent.abstract }}</p>
+          </div>
+          <a href="/" role="button" class="btn btn-primary btn-return-home">
+	    New search
+	  </a><br />
+        </td>
+      </tr>
+    </table>
+    <table class="table">
+      <thead>
+        <tr>
+          <th scope="col">Article</th>
+          <th scope="col">Similarity</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for result in results %}
+        <tr>
+          <td>
+            <h4>{{ result.title }}</h4>
+            <p>
+              Year: {{ result.year }}<br />
+              Type: {% if result.pubtator3_genes|length > 0 %}
+		Molecular
+		{% else %}
+		Behavioral
+		{% endif %}<br />
+              Genes: {% for i in range(result.genes["symbol"]|length) %}
+              <a
+                href="https://www.ncbi.nlm.nih.gov/gene/{{ result.genes['entrez_id'][i] }}"
+              >
+                {{ result.genes['symbol'][i] }} ({{
+                result.genes['prediction'][i] }})
+              </a>
+              {% if (i + 1) < result.genes["symbol"]|length %}, {% endif %} {%
+              endfor %}
+            </p>
+            <br />
+            <p>{{ result.abstract }}</p>
+            <a
+              href="/results/pmid_search?positives={{ result.pmid }}&year_min={{ year_range.min_year }}&year_max={{ year_range.max_year }}"
+              role="button"
+              class="btn btn-primary btn-return-home"
+              >Search</a
+            >
+            {% if result.reference > 0 %}
+            <a
+              href="/analyze/{{ result.pmid }}"
+              role="button"
+              class="btn btn-primary btn-return-home"
+              >Analyze references ({{ result.reference }})</a
+            >
+            {% endif %}
+            <a
+              href="https://pubmed.ncbi.nlm.nih.gov/{{ result.pmid }}"
+              role="botton"
+              class="btn btn-primary btn-return-home"
+              >PubMed {{result.pmid}}</a
+            >
+          </td>
+          <td>{{ "{:.2f}".format(result.similarity) }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+
+    <div
+      style="
+        margin-top: 20px;
+        margin-bottom: 20px;
+        display: flex;
+        justify-content: center;
+        gap: 10px;
+      "
+    >
+      {% if session_id %} {% set base_url = request.url_for("user_input",
+      session_id=session_id) %} {% set positives = "" %} {% set negatives = ""
+      %} {% else %} {% set base_url = request.url_for("pmid_search") %} {% set
+      positives = "&positives=" ~ (request.query_params['positives'] | string)
+      %} {% set negatives = "&negatives=" ~ (request.query_params['negatives'] |
+      string) %} {% endif %} {% if page > 2 %}
+      <a
+        href="{{ base_url }}?year_min={{ request.query_params['year_min'] }}&year_max={{ request.query_params['year_max'] }}{{ positives }}{{ negatives }}&behavioral={{ request.query_params['behavioral'] }}&molecular={{ request.query_params['molecular'] }}"
+        class="btn btn-primary"
+        >First</a
+      >
+      {% endif %} {% if page > 1 %}
+      <a
+        href="{{ base_url }}?year_min={{ request.query_params['year_min'] }}&year_max={{ request.query_params['year_max'] }}{{ positives }}{{ negatives }}&page={{ page - 1 }}&behavioral={{ request.query_params['behavioral'] }}&molecular={{ request.query_params['molecular'] }}"
+        class="btn btn-primary"
+        >Prev</a
+      >
+      {% endif %}
+      <h3 style="margin-left: 0px">{{ page }}</h3>
+      {% if not last_page %}
+      <a
+        href="{{ base_url }}?year_min={{ request.query_params['year_min'] }}&year_max={{ request.query_params['year_max'] }}{{ positives }}{{ negatives }}&page={{ page + 1 }}&behavioral={{ request.query_params['behavioral'] }}&molecular={{ request.query_params['molecular'] }}"
+        class="btn btn-primary"
+        >Next</a
+      >
+      {% endif %}
+    </div>
+  </body>
+</html>
