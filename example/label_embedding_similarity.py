@@ -114,7 +114,7 @@ def plot(corr, symbols, ground_truth, name, title):
         int(np.median(np.where(tick_pos == i))) for i in range(n_labels)
     ]
 
-    ax.set_xticks([])
+    ax.set_xticks(tick_pos, symbols)
     ax.set_yticks(tick_pos, symbols)
     fig.colorbar(im, ax=ax, fraction=0.04, pad=0.04)
 
