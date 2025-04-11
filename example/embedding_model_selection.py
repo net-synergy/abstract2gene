@@ -1,6 +1,6 @@
 """Compare models and hyperparamaters."""
 
-import sys
+import argparse
 
 import datasets
 from sentence_transformers import (
@@ -16,21 +16,37 @@ from abstract2gene.dataset import dataset_generator, mutators
 from example import config as cfg
 
 CHKPT_PATH = "models/"
-N_STEPS = 100
-N_TRIALS = 20
-SEED = 10
+n_steps = 100
+n_trials = 20
+seed = cfg.seeds["embedding_model_selection"]
 
-if __name__ == "__main__" and len(sys.argv) == 2:
-    SEED = int(sys.argv[1])
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser()
+    parser.add_argument(
+        "n_steps",
+        required=False,
+        default=n_steps,
+        help="Number of steps per batch.",
+    )
+    parser.add_argument(
+        "n_trials",
+        required=False,
+        default=n_steps,
+        help="Number of trials to perform per model.",
+    )
+    args = parser.parse_args()
+    n_steps = args.n_steps
+    n_trials = args.n_trials
 
 
 def load_dataset(
     files: list[str], batch_size: int, n_batches: int, seed: int
 ) -> datasets.Dataset:
     dataset = datasets.load_dataset(
-        "dconnell/pubtator3_abstracts", data_files=files
+        f"{cfg.hf_user}/pubtator3_abstracts",
+        data_files=files,
     )["train"]
-    dataset = mutators.mask_abstract(dataset, "gene", max_cpu=20)
+    dataset = mutators.mask_abstract(dataset, "gene", max_cpu=cfg.max_cpu)
 
     return dataset_generator(
         dataset, seed=seed, batch_size=batch_size, n_batches=n_batches
@@ -57,7 +73,7 @@ def hpo_compute_objective(metrics):
     return metrics["eval_cosine_accuracy"]
 
 
-args = SentenceTransformerTrainingArguments(
+training_args = SentenceTransformerTrainingArguments(
     output_dir="models",
     fp16=False,
     bf16=True,
@@ -67,9 +83,9 @@ args = SentenceTransformerTrainingArguments(
     logging_dir="logs",
 )
 
-dataset_train = load_dataset(cfg.EMBEDDING_TRAIN_FILES, 64, N_STEPS, 0)
+dataset_train = load_dataset(cfg.EMBEDDING_TRAIN_FILES, 64, n_steps, 0)
 dataset_train = dataset_train.remove_columns("negative")
-dataset_test = load_dataset(cfg.TEST_FILES, 64, 50, SEED)
+dataset_test = load_dataset(cfg.TEST_FILES, 64, 50, seed)
 
 evaluator = TripletEvaluator(
     anchors=dataset_test["anchor"],
@@ -78,14 +94,14 @@ evaluator = TripletEvaluator(
 )
 
 print("Pre fine-tuning accuracy")
-for name, model in cfg.MODELS.items():
+for name, model in cfg.models.items():
     print(name)
     original_model = SentenceTransformer(model)
     print(evaluator(original_model))
 
 # ## Select model
 print("\nTraining")
-for name, model in cfg.MODELS.items():
+for name, model in cfg.models.items():
 
     def hpo_model_init() -> SentenceTransformer:
         return SentenceTransformer(model)
@@ -93,7 +109,7 @@ for name, model in cfg.MODELS.items():
     print(name)
     trainer = SentenceTransformerTrainer(
         model=None,
-        args=args,
+        args=training_args,
         train_dataset=dataset_train,
         loss=hpo_loss_init,
         model_init=hpo_model_init,
@@ -103,7 +119,7 @@ for name, model in cfg.MODELS.items():
     best_trial = trainer.hyperparameter_search(
         hp_space=hpo_search_space,
         compute_objective=hpo_compute_objective,
-        n_trials=N_TRIALS,
+        n_trials=n_trials,
         direction="maximize",
         backend="optuna",
     )
@@ -116,7 +132,7 @@ for name, model in cfg.MODELS.items():
 # After running the above, ernie and pubmedncl came out as the best model to
 # fine-tune.
 dataset_train = load_dataset(
-    cfg.EMBEDDING_TRAIN_FILES, 64, N_STEPS * 4, SEED + 1
+    cfg.EMBEDDING_TRAIN_FILES, 64, n_steps * 4, seed + 1
 )
 dataset_train = dataset_train.remove_columns("negative")
 winners = ["ernie", "pubmedncl"]
@@ -125,7 +141,7 @@ print("\nFurther training")
 for name in winners:
 
     def hpo_winner_init() -> SentenceTransformer:
-        return SentenceTransformer(cfg.MODELS[name])
+        return SentenceTransformer(cfg.models[name])
 
     print(name)
     trainer = SentenceTransformerTrainer(

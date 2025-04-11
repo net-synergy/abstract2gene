@@ -17,16 +17,14 @@ from example import config as cfg
 
 CHKPT_PATH = "models/"
 
-SEED = 20
-if __name__ == "__main__" and len(sys.argv) == 2:
-    SEED = int(sys.argv[1])
+seed = cfg.seeds["finetune_encoder"]
 
 
 def load_dataset(
     files: list[str], batch_size: int, n_batches: int, seed: int
 ) -> Dataset:
     dataset = datasets.load_dataset(
-        "dconnell/pubtator3_abstracts", data_files=files
+        f"{cfg.hf_user}/pubtator3_abstracts", data_files=files
     )["train"]
     dataset = mutators.mask_abstract(dataset, "gene", max_cpu=20)
 
@@ -43,7 +41,7 @@ def finetune(
     learning_rate: float,
     warmup_ratio: float,
 ):
-    model = SentenceTransformer(cfg.MODELS[model_name])
+    model = SentenceTransformer(cfg.models[model_name])
     loss = MultipleNegativesRankingLoss(model)
 
     args = SentenceTransformerTrainingArguments(
@@ -82,8 +80,6 @@ def finetune(
     trainer.train()
     model.save_pretrained(encoder_path(f"{model_name}-abstract2gene"))
 
-    model.push_to_hub(f"dconnell/{model_name}-abstract2gene")
-
 
 if __name__ == "__main__":
     n_steps = 10_000
@@ -96,11 +92,11 @@ if __name__ == "__main__":
         cfg.EMBEDDING_TRAIN_FILES,
         batch_size=batch_size,
         n_batches=n_steps,
-        seed=SEED,
+        seed=seed,
     )
 
     test_dataset = load_dataset(
-        cfg.TEST_FILES, batch_size=batch_size, n_batches=50, seed=SEED + 1
+        cfg.TEST_FILES, batch_size=batch_size, n_batches=50, seed=seed + 1
     )
 
     finetune(

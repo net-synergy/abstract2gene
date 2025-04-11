@@ -8,15 +8,14 @@ import plotnine as p9
 import speakeasy2 as se2
 
 import abstract2gene as a2g
+from example import config as cfg
 
-SEED = 60
 N_PUBLICATIONS = 10
 FIGDIR = "figures/reference_similarities/"
 MODEL = "a2g_768dim_per_batch_4"
 k = 5
 
-if __name__ == "__main__" and len(sys.argv) == 2:
-    SEED = int(sys.argv[1])
+seed = cfg.seeds["reference_similarity"]
 
 if not os.path.exists(FIGDIR):
     os.makedirs(FIGDIR)
@@ -24,7 +23,7 @@ if not os.path.exists(FIGDIR):
 model = a2g.model.load_from_disk(MODEL)
 dataset = datasets.load_dataset("dconnell/pubtator3_abstracts")["train"]
 
-rng = np.random.default_rng(seed=SEED)
+rng = np.random.default_rng(seed=seed)
 parent_publications = [
     int(pub)
     for pub in rng.integers(0, len(dataset), N_PUBLICATIONS * 10)
@@ -73,7 +72,7 @@ corr = regression @ regression.T
 np.fill_diagonal(corr, 0)
 
 graph = se2.knn_graph(corr, k)
-clusters = se2.cluster(graph, subcluster=2, seed=SEED + 1)
+clusters = se2.cluster(graph, subcluster=2, seed=seed + 1)
 ordering = se2.order_nodes(corr, clusters)
 
 comm_dict = [
@@ -109,7 +108,11 @@ p = (
     + p9.geom_bar()
     + p9.coord_flip()
 )
-p.save(os.path.join(FIGDIR, f"cluster_dist_{MODEL}_{k}.png"), dpi=600)
+p.save(
+    os.path.join(FIGDIR, f"cluster_dist_{MODEL}_{k}.{cfg.figure_ext}"),
+    width=cfg.fig_width,
+    height=cfg.fig_height,
+)
 
 p = (
     p9.ggplot(
@@ -121,8 +124,12 @@ p = (
     + p9.coord_flip()
 )
 p.save(
-    os.path.join(FIGDIR, f"cluster_dist_highlight_molecular_{MODEL}_{k}.png"),
-    dpi=600,
+    os.path.join(
+        FIGDIR,
+        f"cluster_dist_highlight_molecular_{MODEL}_{k}.{cfg.figure_ext}",
+    ),
+    width=cfg.fig_width,
+    height=cfg.fig_height,
 )
 
 ## Analyze parent publications
@@ -153,4 +160,8 @@ p = (
     + p9.geom_col(stat="identity", position="dodge", show_legend=False)
     + p9.theme(axis_text_x=p9.element_text(rotation=10))
 )
-p.save(os.path.join(FIGDIR, f"parent_gene_dist_{MODEL}.png"), dpi=600)
+p.save(
+    os.path.join(FIGDIR, f"parent_gene_dist_{MODEL}.{cfg.figure_ext}"),
+    width=cfg.fig_width,
+    height=cfg.fig_height,
+)

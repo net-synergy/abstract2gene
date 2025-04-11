@@ -16,6 +16,7 @@ import sys
 import datasets
 
 import abstract2gene as a2g
+import example.config as ex_cfg
 import webapp.config as cfg
 from abstract2gene.data import model_path
 from webapp import database
@@ -33,7 +34,7 @@ _file_template = "data/BioCXML_{archive}/data-{f_idx:05}-of-{f_total:05}.arrow"
 data_files = _file_template.format(archive=0, f_idx=0, f_total=20)
 
 dataset = datasets.load_dataset(
-    "dconnell/pubtator3_abstracts", data_files=data_files
+    f"{ex_cfg.hf_user}/pubtator3_abstracts", data_files=data_files
 )["train"]
 dataset = dataset.select(range(1000))
 

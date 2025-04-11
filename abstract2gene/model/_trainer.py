@@ -266,14 +266,18 @@ def test(
     return pd.DataFrame({"score": scores, "tag": tags, "symbol": label_names})
 
 
-def plot(df: pd.DataFrame, path: str | None = None):
+def plot(
+    df: pd.DataFrame,
+    path: str | None = None,
+    width: float | None = None,
+    height: float | None = None,
+):
     from plotnine import (
         aes,
         element_text,
         geom_errorbar,
         geom_point,
         ggplot,
-        ggtitle,
         labs,
         position_dodge,
         position_jitterdodge,
@@ -324,6 +328,8 @@ def plot(df: pd.DataFrame, path: str | None = None):
         + theme(axis_text_x=element_text(angle=20))
     )
     if path:
-        p.save(path, width=10, height=10, dpi=600)
+        height = height or 10
+        width = width or 10
+        p.save(path, width=width, height=height)
     else:
         p.show()

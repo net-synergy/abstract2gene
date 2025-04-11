@@ -12,6 +12,7 @@ import os
 
 from abstract2gene.data import dataset_path
 from abstract2gene.dataset import bioc2dataset, mutators
+from example import config as cfg
 
 
 def clear_save(path):
@@ -28,14 +29,14 @@ def clear_save(path):
     os.rmdir(path)
 
 
-n_cpu = 60
+n_cpu = cfg.max_cpu
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument(
-        "--n_cpu",
+        "n_cpu",
         type=int,
         requried=False,
-        default=1,
+        default=cfg.max_cpu,
         help="Number of CPU processes to use to parse the Bioc files",
     )
     args = parser.parse_args()

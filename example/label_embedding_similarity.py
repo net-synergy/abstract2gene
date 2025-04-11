@@ -18,6 +18,7 @@ adequate.
 We can use this example to compare embeddings produced by multiple models.
 """
 
+import argparse
 import os
 import sys
 
@@ -34,18 +35,32 @@ from abstract2gene.data import encoder_path
 from abstract2gene.dataset import mutators
 from example import config as cfg
 
-SEED = 50
-N_LABELS = 15
-SAMPLES_PER_LABEL = 100
+seed = cfg.seeds["label_embedding_similarity"]
 FIGDIR = "figures/label_similarities"
-ENCODER = encoder_path("pubmedncl-abstract2gene")
+ENCODER = encoder_path("PubMedNCL-abstract2gene")
 
 if not os.path.exists(FIGDIR):
     os.makedirs(FIGDIR)
 
-
+n_labels = 15
+samples_per_label = 100
 if __name__ == "__main__" and len(sys.argv) == 2:
-    SEED = int(sys.argv[1])
+    parser = argparse.ArgumentParser()
+    parser.add_argument(
+        "n_labels",
+        required=False,
+        default=n_labels,
+        help="Number of genes to use.",
+    )
+    parser.add_argument(
+        "samples_per_label",
+        required=False,
+        default=samples_per_label,
+        help="Samples to collect per gene.",
+    )
+    args = parser.parse_args()
+    n_labels = args.n_labels
+    samples_per_label = args.samples_per_label
 
 
 def filter_kth_prevalant_genes(
@@ -65,7 +80,7 @@ def filter_kth_prevalant_genes(
     )
 
     symbols = np.take(symbols, gene_ids).tolist()  # type: ignore[assignment]
-    newids = dict(zip(gene_ids, list(range(N_LABELS))))
+    newids = dict(zip(gene_ids, list(range(n_labels))))
 
     dataset = dataset.map(
         lambda example: {
@@ -84,46 +99,51 @@ def correlate(features: np.ndarray) -> np.ndarray:
 
 
 def plot(corr, symbols, ground_truth, name, title):
+    # Use a different width for square figures than the global config width.
+    fig_width = 0.7 * cfg.text_width
+
     graph = se2.knn_graph(corr, k=50)
     ordering_gt = se2.order_nodes(graph, ground_truth)
     norm = colors.Normalize(vmin=0, vmax=1)
 
-    fig, ax = plt.subplots()
+    fig, ax = plt.subplots(figsize=(fig_width, fig_width))
     im = ax.imshow(corr[np.ix_(ordering_gt, ordering_gt)], norm=norm)
-
-    fig.suptitle(title)
 
     tick_pos = np.take(ground_truth.membership, ordering_gt)
     tick_pos = [
-        int(np.median(np.where(tick_pos == i))) for i in range(N_LABELS)
+        int(np.median(np.where(tick_pos == i))) for i in range(n_labels)
     ]
 
     ax.set_xticks([])
     ax.set_yticks(tick_pos, symbols)
-    fig.colorbar(im)
+    fig.colorbar(im, ax=ax, fraction=0.04, pad=0.04)
 
-    plt.savefig(os.path.join(FIGDIR, f"{name}.png"), dpi=600)
+    fig.patch.set_facecolor("none")
+    ax.set_facecolor("none")
+    plt.tight_layout(pad=0, rect=(0, 0, 1, 0.96))
+
+    plt.savefig(os.path.join(FIGDIR, f"{name}.{cfg.figure_ext}"))
 
 
 ## Load dataset
 dataset = datasets.load_dataset(
-    "dconnell/pubtator3_abstracts", data_files=cfg.LABEL_SIMILARITY_FILES
+    f"{cfg.hf_user}/pubtator3_abstracts", data_files=cfg.LABEL_SIMILARITY_FILES
 )["train"]
 symbols = mutators.get_gene_symbols(dataset)
 
-specter = SentenceTransformer("sentence-transformers/allenai-specter")
-embed_orig = SentenceTransformer("malteos/PubMedNCL")
+scibert = SentenceTransformer(cfg.MODELS["scibert"])
+embed_orig = SentenceTransformer(cfg.MODELS["PubMedNCL"])
 embed_ft = SentenceTransformer(ENCODER)
 
 for k in [1, 5]:
     ds_k, sym_k = filter_kth_prevalant_genes(
-        dataset, k=k, n_genes=N_LABELS, symbols=symbols
+        dataset, k=k, n_genes=n_labels, symbols=symbols
     )
 
     ds_k = ds_k.map(
         lambda examples: {
-            "specter": [
-                specter.encode(title + "[SEP]" + abstract)
+            "scibert": [
+                scibert.encode(title + "[SEP]" + abstract)
                 for title, abstract in zip(
                     examples["title"], examples["abstract"]
                 )
@@ -161,12 +181,12 @@ for k in [1, 5]:
 
     # Randomly downsample to reduce computation and get an equal number of
     # samples per gene.
-    rng = np.random.default_rng(seed=SEED)
-    indices = np.zeros((N_LABELS, SAMPLES_PER_LABEL), dtype=int)
-    for i in range(N_LABELS):
+    rng = np.random.default_rng(seed=seed)
+    indices = np.zeros((n_labels, samples_per_label), dtype=int)
+    for i in range(n_labels):
         indices[i, :] = rng.choice(
             np.arange(clusters.shape[0])[clusters == i],
-            SAMPLES_PER_LABEL,
+            samples_per_label,
             replace=False,
         )
     indices = np.concat(indices, axis=0)
@@ -175,10 +195,10 @@ for k in [1, 5]:
     ground_truth = ig.clustering.Clustering(clusters[indices])
 
     ds_k = ds_k.select(samples).with_format(
-        "numpy", columns=["pubmed-ncl", "fine-tuned", "specter"]
+        "numpy", columns=["pubmed-ncl", "fine-tuned", "scibert"]
     )
 
-    for feature in ["pubmed-ncl", "fine-tuned", "specter"]:
+    for feature in ["pubmed-ncl", "fine-tuned", "scibert"]:
         corr = correlate(ds_k[feature])
         plot(
             corr,

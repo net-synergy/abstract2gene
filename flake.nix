@@ -134,9 +134,15 @@
         inherit python;
         groups = [ "dev" "app" ];
       });
+
+      tex = pkgs.texlive.combine {
+        inherit (pkgs.texlive)
+          scheme-small latex-bin latexmk tex-gyre tex-gyre-math type1cm cm-super
+          microtype fpl palatino mathpazo;
+      };
     in {
       devShells.${system}.default = pkgs.mkShell {
-        packages = [ a2gEnv ];
+        packages = [ a2gEnv tex ];
 
         env = {
           UV_NO_SYNC = "1";

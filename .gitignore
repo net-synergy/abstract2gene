@@ -6,4 +6,4 @@ example_results/
 tmp/
 qdrant/
 auth/
-site.toml
+a2g.toml

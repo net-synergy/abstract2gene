@@ -13,20 +13,19 @@ from example import config as cfg
 
 ## Private data
 TRANSCRIPTOME_PATH = "/disk4/data/adBulkTranscriptome/"
-SEED = 80
+
 # Look for genes with a p-value below ALPHA but show at most MAX_GENES
 ALPHA = 0.05
 MAX_GENES = 50
 FIGDIR = "figures/differential_expression/"
 
+seed = cfg.seeds["differential_expression"]
 if not os.path.exists(FIGDIR):
     os.makedirs(FIGDIR)
 
-if __name__ == "__main__" and len(sys.argv) == 2:
-    SEED = int(sys.argv[1])
-
 dataset = datasets.load_dataset(
-    "dconnell/pubtator3_abstracts", data_files=cfg.AD_DE_FILES
+    f"{cfg.hf_user}/pubtator3_abstracts",
+    data_files=cfg.AD_DE_FILES,
 )["train"]
 
 ## Calculate differential gene expression between AD and NCI participants.
@@ -128,7 +127,7 @@ ad_mask = np.fromiter(
     dtype=np.bool,
 )
 
-rng = np.random.default_rng(seed=SEED)
+rng = np.random.default_rng(seed=seed)
 n_samples = ad_mask.sum()
 publications_ad = np.arange(len(ad_mask))[ad_mask]
 publications_other = rng.choice(
@@ -179,28 +178,30 @@ for name in [f"a2g_768dim_per_batch_{2**n}" for n in range(1, 7)]:
                 + (["pubtator3"] * n_samples * n_genes * 2)
             ),
             "gene": np.array(symbols * n_samples * 4),
-            "prediction": np.hstack(
-                (
-                    np.array(model.predict(inputs(publications_ad)))[
-                        :, de_model_idx
-                    ].flatten(),
-                    np.array(model.predict(inputs(publications_other)))[
-                        :, de_model_idx
-                    ].flatten(),
-                    np.array(
-                        [
-                            gene in labels
-                            for labels in dataset[
-                                np.hstack(
-                                    (publications_ad, publications_other)
-                                )
-                            ]["gene"]
-                            for gene in de_dataset_idx
-                        ]
-                    ),
+            "prediction": (
+                np.hstack(
+                    (
+                        np.array(model.predict(inputs(publications_ad)))[
+                            :, de_model_idx
+                        ].flatten(),
+                        np.array(model.predict(inputs(publications_other)))[
+                            :, de_model_idx
+                        ].flatten(),
+                        np.array(
+                            [
+                                gene in labels
+                                for labels in dataset[
+                                    np.hstack(
+                                        (publications_ad, publications_other)
+                                    )
+                                ]["gene"]
+                                for gene in de_dataset_idx
+                            ]
+                        ),
+                    )
                 )
-            )
-            > 0.5,
+                > 0.5
+            ),
         }
     )
 
@@ -271,7 +272,7 @@ for name in [f"a2g_768dim_per_batch_{2**n}" for n in range(1, 7)]:
         )
         + p9.theme(axis_text_x=p9.element_text(rotation=90))
     )
-    p.save(os.path.join(FIGDIR, f"bernoulli_{name}.png"), dpi=600)
+    p.save(os.path.join(FIGDIR, f"bernoulli_{name}.{cfg.figure_ext}"))
 
     p = (
         p9.ggplot(
@@ -291,4 +292,4 @@ for name in [f"a2g_768dim_per_batch_{2**n}" for n in range(1, 7)]:
         )
         + p9.theme(axis_text_x=p9.element_text(rotation=90))
     )
-    p.save(os.path.join(FIGDIR, f"bernoulli_{name}_logy.png"), dpi=600)
+    p.save(os.path.join(FIGDIR, f"bernoulli_{name}_logy.{cfg.figure_ext}"))

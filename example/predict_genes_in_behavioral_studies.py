@@ -15,18 +15,16 @@ import pandas as pd
 import plotnine as p9
 
 import abstract2gene as a2g
+from example import config as cfg
 
-SEED = 70
+seed = cfg.seeds["predict_genes_in_behavioral_studies"]
 FIGDIR = "figures/behavioral_genes"
 
 if not os.path.exists(FIGDIR):
     os.makedirs(FIGDIR)
 
-if __name__ == "__main__" and len(sys.argv) == 2:
-    SEED = int(sys.argv[1])
-
-dataset = datasets.load_dataset("dconnell/pubtator3_abstracts")["train"]
-rng = np.random.default_rng(seed=SEED)
+dataset = datasets.load_dataset(f"{cfg.hf_user}/pubtator3_abstracts")["train"]
+rng = np.random.default_rng(seed=seed)
 parent_publications = [
     int(pub)
     for pub in rng.integers(0, len(dataset), 10000)
@@ -168,7 +166,11 @@ for name in [f"a2g_768dim_per_batch_{2**n}" for n in range(1, 7)]:
             format_string="{:0.2f}",
         )
     )
-    p.save(os.path.join(FIGDIR, f"correlation_{name}.png"), dpi=600)
+    p.save(
+        os.path.join(FIGDIR, f"correlation_{name}.{cfg.figure_ext}"),
+        width=cfg.fig_width,
+        height=cfg.fig_height,
+    )
 
     selected_genes = [np.argmax(p_set[0]) for p_set in probabilities]
     selected_probabilities = np.vstack(
@@ -187,8 +189,10 @@ for name in [f"a2g_768dim_per_batch_{2**n}" for n in range(1, 7)]:
         {
             "parent_prob": selected_probabilities[:, 0].repeat(3),
             "reference_prob": selected_probabilities[:, 1:].reshape((-1,)),
-            "group": ["behavioral", "molecular", "random"]
-            * selected_probabilities.shape[0],
+            "group": (
+                ["behavioral", "molecular", "random"]
+                * selected_probabilities.shape[0]
+            ),
         }
     )
 
@@ -200,37 +204,9 @@ for name in [f"a2g_768dim_per_batch_{2**n}" for n in range(1, 7)]:
         + p9.geom_smooth()
     )
     p.save(
-        os.path.join(FIGDIR, f"selected_gene_correlation_{name}.png"),
-        dpi=600,
+        os.path.join(
+            FIGDIR, f"selected_gene_correlation_{name}.{cfg.figure_ext}"
+        ),
+        width=cfg.fig_width,
+        height=cfg.fig_height,
     )
-
-    # fig, ax = plt.subplots()
-    # sort_idx = np.argsort(selected_probabilities[:, 0])
-    # ax.plot(
-    #     selected_probabilities[sort_idx, 0],
-    #     selected_probabilities[sort_idx, 1],
-    #     ".",
-    #     label="behavioral citation",
-    # )
-    # ax.plot(
-    #     selected_probabilities[sort_idx, 0],
-    #     selected_probabilities[sort_idx, 2],
-    #     ".",
-    #     label="molecular citation",
-    # )
-    # ax.plot(
-    #     selected_probabilities[sort_idx, 0],
-    #     selected_probabilities[sort_idx, 3],
-    #     ".",
-    #     label="random",
-    # )
-    # ax.legend(loc="upper left")
-    # ax.set_xlabel("parent prediction")
-    # ax.set_ylabel("reference prediction")
-    # ax.set_xlim(0, 1)
-    # ax.set_ylim(0, 1)
-    # plt.savefig(
-    #     os.path.join(FIGDIR, f"selected_gene_correlation_{name}.png"),
-    #     dpi=600,
-    # )
-    # plt.close()

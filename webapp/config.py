@@ -1,14 +1,13 @@
 """Read the webapps config file."""
 
-import os
 import tomllib
 
-_conf_file = "site.toml"
-if not os.path.exists(_conf_file):
-    conf = {}
-else:
+_conf_file = "a2g.toml"
+try:
     with open(_conf_file, "rb") as fp:
-        conf = tomllib.load(fp)
+        conf = tomllib.load(fp)["site"]
+except (KeyError, FileNotFoundError):
+    conf = {}
 
 model_name = "a2g_768dim_per_batch_16"
 min_genes = 5

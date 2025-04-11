@@ -14,7 +14,7 @@ services:
       - ${A2G_DATA_HOME}:/root/.local/share/abstract2gene
       - ${HF_CACHE}:/root/.cache/huggingface
       - ./auth:/root/.local/share/auth
-      - ./site.toml:/app/site.toml
+      - ./a2g.toml:/app/a2g.toml
     environment:
       - A2G_QDRANT_URL=qdrant
     deploy:
