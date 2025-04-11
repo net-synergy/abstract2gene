@@ -107,6 +107,9 @@ p = (
     )
     + p9.geom_bar()
     + p9.coord_flip()
+    + p9.theme(
+        text=p9.element_text(family=cfg.font_family, size=cfg.font_size),
+    )
 )
 p.save(
     os.path.join(FIGDIR, f"cluster_dist_{MODEL}_{k}.{cfg.figure_ext}"),
@@ -122,6 +125,9 @@ p = (
     + p9.scale_alpha_discrete(range=(0.5, 1))
     + p9.geom_bar()
     + p9.coord_flip()
+    + p9.theme(
+        text=p9.element_text(family=cfg.font_family, size=cfg.font_size),
+    )
 )
 p.save(
     os.path.join(
@@ -158,7 +164,10 @@ p = (
         p9.aes(x="pmid", y="prediction", fill="pmid", group="gene"),
     )
     + p9.geom_col(stat="identity", position="dodge", show_legend=False)
-    + p9.theme(axis_text_x=p9.element_text(rotation=10))
+    + p9.theme(
+        axis_text_x=p9.element_text(rotation=10),
+        text=p9.element_text(family=cfg.font_family, size=cfg.font_size),
+    )
 )
 p.save(
     os.path.join(FIGDIR, f"parent_gene_dist_{MODEL}.{cfg.figure_ext}"),

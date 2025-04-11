@@ -165,6 +165,9 @@ for name in [f"a2g_768dim_per_batch_{2**n}" for n in range(1, 7)]:
             data=summary,
             format_string="{:0.2f}",
         )
+        + p9.theme(
+            text=p9.element_text(family=cfg.font_family, size=cfg.font_size),
+        )
     )
     p.save(
         os.path.join(FIGDIR, f"correlation_{name}.{cfg.figure_ext}"),
@@ -202,6 +205,9 @@ for name in [f"a2g_768dim_per_batch_{2**n}" for n in range(1, 7)]:
         )
         + p9.geom_point()
         + p9.geom_smooth()
+        + p9.theme(
+            text=p9.element_text(family=cfg.font_family, size=cfg.font_size),
+        )
     )
     p.save(
         os.path.join(

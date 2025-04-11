@@ -270,7 +270,10 @@ for name in [f"a2g_768dim_per_batch_{2**n}" for n in range(1, 7)]:
         + p9.labs(
             y="Proportion labeled", x="Gene", alpha="Significant difference"
         )
-        + p9.theme(axis_text_x=p9.element_text(rotation=90))
+        + p9.theme(
+            axis_text_x=p9.element_text(rotation=90),
+            text=p9.element_text(family=cfg.font_family, size=cfg.font_size),
+        )
     )
     p.save(os.path.join(FIGDIR, f"bernoulli_{name}.{cfg.figure_ext}"))
 
@@ -290,6 +293,9 @@ for name in [f"a2g_768dim_per_batch_{2**n}" for n in range(1, 7)]:
         + p9.labs(
             y="Proportion labeled", x="Gene", alpha="Significant difference"
         )
-        + p9.theme(axis_text_x=p9.element_text(rotation=90))
+        + p9.theme(
+            axis_text_x=p9.element_text(rotation=90),
+            text=p9.element_text(family=cfg.font_family, size=cfg.font_size),
+        )
     )
     p.save(os.path.join(FIGDIR, f"bernoulli_{name}_logy.{cfg.figure_ext}"))
