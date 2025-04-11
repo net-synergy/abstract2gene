@@ -1,4 +1,4 @@
-__all__ = ["Trainer", "test", "plot"]
+__all__ = ["Trainer", "test"]
 
 import datasets
 import jax.numpy as jnp
@@ -264,72 +264,3 @@ def test(
         last += n_samples
 
     return pd.DataFrame({"score": scores, "tag": tags, "symbol": label_names})
-
-
-def plot(
-    df: pd.DataFrame,
-    path: str | None = None,
-    width: float | None = None,
-    height: float | None = None,
-):
-    from plotnine import (
-        aes,
-        element_text,
-        geom_errorbar,
-        geom_point,
-        ggplot,
-        labs,
-        position_dodge,
-        position_jitterdodge,
-        theme,
-    )
-
-    def stderr(x):
-        return np.std(x) / np.sqrt(x.shape[0])
-
-    metrics = df.groupby(["tag", "symbol"], as_index=False)["score"].agg(
-        ["mean", "std", stderr]
-    )
-
-    jitter = position_jitterdodge(
-        jitter_width=0.2, dodge_width=0.8, random_state=0
-    )
-    dodge = position_dodge(width=0.8)
-    p = (
-        ggplot(df, aes(x="symbol", color="tag"))
-        + geom_point(aes(y="score"), position=jitter, size=1, alpha=0.4)
-        + geom_errorbar(
-            aes(
-                y="mean",
-                ymin="mean - (1.95 * std)",
-                ymax="mean + (1.95 * std)",
-                fill="tag",
-            ),
-            data=metrics,
-            color="black",
-            position=dodge,
-            width=0.5,
-            size=0.3,
-        )
-        + geom_errorbar(
-            aes(
-                y="mean",
-                ymin="mean - (1.95 * stderr)",
-                ymax="mean + (1.95 * stderr)",
-                fill="tag",
-            ),
-            data=metrics,
-            color="black",
-            position=dodge,
-            width=0.8,
-            size=1,
-        )
-        + labs(y="Similarity", x="Gene")
-        + theme(axis_text_x=element_text(angle=20))
-    )
-    if path:
-        height = height or 10
-        width = width or 10
-        p.save(path, width=width, height=height)
-    else:
-        p.show()

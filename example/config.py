@@ -80,6 +80,8 @@ hf_user = conf.get("hf_user", hf_user)
 models = conf.get("embedding-models", MODELS)
 max_cpu = conf.get("max_cpu", max_cpu)
 text_width = 7.5
+font_family: str | None = None
+font_size: int | None = None
 
 if "seeds" in conf:
     seeds.update(conf["seeds"])
@@ -98,6 +100,9 @@ if "figures" in conf:
         "dpi": "dpi",
     }
     plt.rcParams.update({_rename[k]: v for k, v in _fig_conf.items()})
+
+    font_family = _fig_conf.get("font_family", font_family)
+    font_size = _fig_conf.get("font_size", font_size)
 
 fig_width = text_width * 0.9
 fig_height = fig_width * ((0.5 * (1 + sqrt(5))) - 1)

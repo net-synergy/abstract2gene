@@ -14,7 +14,6 @@ __all__ = [
     "Trainer",
     "Model",
     "test",
-    "plot",
     "load_from_disk",
 ]
 
@@ -25,4 +24,4 @@ from ._models import (
     RawSimilarity,
     load_from_disk,
 )
-from ._trainer import Trainer, plot, test
+from ._trainer import Trainer, test
