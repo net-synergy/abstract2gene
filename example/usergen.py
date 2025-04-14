@@ -5,7 +5,7 @@ import getpass
 import json
 import os
 
-from passlib.context import CryptContext
+import bcrypt
 
 PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 USER_FILE = os.path.join(PROJECT_ROOT, "auth", "users.json")
@@ -56,10 +56,14 @@ def rm(args: argparse.Namespace) -> None:
         print(not_found_msg)
 
 
+def _hash_pass(password: str) -> str:
+    pwd_bytes = password.encode("utf-8")
+    salt = bcrypt.gensalt()
+    return bcrypt.hashpw(pwd_bytes, salt).decode("utf-8")
+
+
 def add(args: argparse.Namespace) -> None:
     """Add a new user and create their password."""
-    pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
-
     try:
         users = _read_users()
     except FileNotFoundError:
@@ -71,7 +75,7 @@ def add(args: argparse.Namespace) -> None:
         return
 
     password = getpass.getpass("Password: ")
-    users[args.user] = pwd_context.hash(password)
+    users[args.user] = _hash_pass(password)
     _write_users(users)
 
 
