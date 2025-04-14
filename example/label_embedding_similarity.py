@@ -102,6 +102,8 @@ def plot(corr, symbols, ground_truth, name, title):
     # Use a different width for square figures than the global config width.
     fig_width = 0.7 * cfg.text_width
 
+    # This is left over from before but still used to convert the correlation
+    # matrix to an igraph for order_nodes. Could do this more directly.
     graph = se2.knn_graph(corr, k=50)
     ordering_gt = se2.order_nodes(graph, ground_truth)
     norm = colors.Normalize(vmin=0, vmax=1)
@@ -114,7 +116,9 @@ def plot(corr, symbols, ground_truth, name, title):
         int(np.median(np.where(tick_pos == i))) for i in range(n_labels)
     ]
 
-    ax.set_xticks(tick_pos, symbols)
+    ax.set_xticks(
+        tick_pos, symbols, rotation=45, ha="right", rotation_mode="anchor"
+    )
     ax.set_yticks(tick_pos, symbols)
     fig.colorbar(im, ax=ax, fraction=0.04, pad=0.04)
 

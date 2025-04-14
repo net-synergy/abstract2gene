@@ -107,6 +107,7 @@ p = (
     )
     + p9.geom_bar()
     + p9.coord_flip()
+    + p9.labs(x="Count", y="Cluster", color="Cited by", fill="Cited by")
     + p9.theme(
         text=p9.element_text(family=cfg.font_family, size=cfg.font_size),
     )
@@ -125,6 +126,14 @@ p = (
     + p9.scale_alpha_discrete(range=(0.5, 1))
     + p9.geom_bar()
     + p9.coord_flip()
+    + p9.labs(
+        x="Count",
+        y="Cluster",
+        color="Cited by",
+        fill="Cited by",
+        # Otherwise "Type" gets cutoff for some reason.
+        alpha=r"-\\Type",
+    )
     + p9.theme(
         text=p9.element_text(family=cfg.font_family, size=cfg.font_size),
     )
@@ -150,11 +159,12 @@ inputs = [
 regression = np.array(model.predict(inputs))
 
 pmids = dataset[parent_publications]["pmid"]
+thresh = 0.1
 predictions = [
     {"parent_id": pub_id, "pmid": str(pmid), "gene": gene, "prediction": pred}
     for pub_id, (pub_predictions, pmid) in enumerate(zip(regression, pmids))
     for gene, pred in enumerate(pub_predictions)
-    if pred > 0.1
+    if pred > thresh
 ]
 
 parent_gene_predictions = pd.DataFrame(predictions)
@@ -164,9 +174,14 @@ p = (
         p9.aes(x="pmid", y="prediction", fill="pmid", group="gene"),
     )
     + p9.geom_col(stat="identity", position="dodge", show_legend=False)
+    + p9.labs(x="PMID", y=r"Gene predictions $> " + str(thresh) + r"$")
     + p9.theme(
-        axis_text_x=p9.element_text(rotation=10),
         text=p9.element_text(family=cfg.font_family, size=cfg.font_size),
+        axis_text_x=p9.element_text(
+            rotation=45,
+            ha="right",
+            rotation_mode="anchor",
+        ),
     )
 )
 p.save(

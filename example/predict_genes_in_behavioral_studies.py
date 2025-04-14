@@ -165,6 +165,7 @@ for name in [f"a2g_768dim_per_batch_{2**n}" for n in range(1, 7)]:
             data=summary,
             format_string="{:0.2f}",
         )
+        + p9.labs(fill="Group", color="Group", x="Correlation", y="Count")
         + p9.theme(
             text=p9.element_text(family=cfg.font_family, size=cfg.font_size),
         )
@@ -203,8 +204,11 @@ for name in [f"a2g_768dim_per_batch_{2**n}" for n in range(1, 7)]:
         p9.ggplot(
             prob_df, p9.aes(x="parent_prob", y="reference_prob", color="group")
         )
-        + p9.geom_point()
+        + p9.geom_point(alpha=0.4)
         + p9.geom_smooth()
+        + p9.labs(
+            x="Parent Prediction", y="Reference Prediction", color="Group"
+        )
         + p9.theme(
             text=p9.element_text(family=cfg.font_family, size=cfg.font_size),
         )

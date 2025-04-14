@@ -69,11 +69,15 @@ def plot(df: pd.DataFrame, filename: str | None = None, x_name: str = "Gene"):
             color="black",
             position=dodge,
             width=0.8,
-            size=1,
+            size=0.6,
         )
         + labs(y="Similarity", x=x_name, color="Tag")
         + theme(
-            axis_text_x=element_text(angle=45 if n_symbols > 10 else 0),
+            axis_text_x=element_text(
+                rotation=45 if n_symbols > 10 else 0,
+                ha="right",
+                rotation_mode="anchor",
+            ),
             text=element_text(family=cfg.font_family, size=cfg.font_size),
         )
     )
