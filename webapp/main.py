@@ -86,8 +86,6 @@ def post_abstract_search(
     abstract: str = Form(...),
     year_min: int = Form(...),
     year_max: int = Form(...),
-    molecular: bool = Form(...),
-    behavioral: bool = Form(...),
 ):
     if not client.collection_exists(cfg.tmp_collection_name):
         database.init_db(client, model, cfg.tmp_collection_name)
@@ -96,6 +94,10 @@ def post_abstract_search(
     database.store_user_abstracts(
         client, model, title, abstract, session_id, cfg.tmp_collection_name
     )
+
+    # May add user input for these on search page later.
+    molecular = True
+    behavioral = True
 
     base_url = "/results/user_input"
     return RedirectResponse(
