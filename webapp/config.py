@@ -5,7 +5,9 @@ import tomllib
 _conf_file = "a2g.toml"
 try:
     with open(_conf_file, "rb") as fp:
-        conf = tomllib.load(fp)["site"]
+        conf = tomllib.load(fp)
+        experiment_conf = conf.get("experiments", {})
+        conf = conf["site"]
 except (KeyError, FileNotFoundError):
     conf = {}
 
@@ -14,6 +16,9 @@ min_genes = 5
 gene_thresh = 0.5
 results_per_page = 20
 use_auth = True
+hf_user = "dconnell"
+
+hf_user = experiment_conf.get("hf_user", hf_user)
 
 if "engine" in conf:
     model_name = conf["engine"].get("model_name", model_name)
