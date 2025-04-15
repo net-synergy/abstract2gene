@@ -12,8 +12,8 @@
         const url = new URL(form.action, window.location.origin);
         url.searchParams.set('behavioral', document.getElementById('behavioral').value);
         url.searchParams.set('molecular', document.getElementById('molecular').value);
-        <!-- url.searchParams.set('year_min', document.getElementById('year_min').value); -->
-        form.action = url.toString();
+        url.searchParams.set('page', 1)
+        location.href = url
       }
     </script>
   </head>
@@ -63,7 +63,6 @@
 	  <!--     <option value="-5">Past 5 years</option> -->
 	  <!--     <option value="-10">Past 10 years</option> -->
 	  <!--   </select> -->
-	  <button type="submit" id="filterSubmit" class="btn-return-home">Go</button>
 	</div>
       </fieldset>
     </form>
