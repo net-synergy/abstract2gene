@@ -30,4 +30,4 @@ services:
     ports:
       - "6333:6333"
     volumes:
-      - ./qdrant:/qdrant/storage:z
+      - ${QDRANT_HOME}/qdrant:/qdrant/storage:z
