@@ -17,7 +17,7 @@ RUN --mount=type=cache,target=/root/.cache \
 
 RUN echo "#! /usr/bin/env bash" > startup.sh && \
     echo "uv run python populate_db.py" >> startup.sh && \
-    echo "uv run fastapi dev --host=0.0.0.0 webapp/main.py" >> startup.sh
+    echo "uv run fastapi \$A2G_MODE --host=0.0.0.0 webapp/main.py" >> startup.sh
 
 RUN chmod u+x startup.sh
 

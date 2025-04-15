@@ -17,6 +17,7 @@ services:
       - ./a2g.toml:/app/a2g.toml
     environment:
       - A2G_QDRANT_URL=qdrant
+      - A2G_MODE=${A2G_MODE:-run}
     deploy:
       resources:
         reservations:
