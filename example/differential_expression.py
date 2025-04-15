@@ -2,7 +2,9 @@
 
 Determine if the model labels genes differentially expression in Alzheimer's
 disease patients more often in publications related to Alzheimer's disease than
-in the general publication pool.
+in the general publication pool. Compares results when using molecular
+publications (those with PubTator3 gene annotations) to behavioral publications
+(those without any PubTator3 gene annotations).
 
 Uses relative risk to determine if a publication having Alzheimer's disease
 as a topic is associated with increased likelihood of also being related to a
@@ -40,6 +42,11 @@ dataset = datasets.load_dataset(
     f"{cfg.hf_user}/pubtator3_abstracts",
     data_files=cfg.AD_DE_FILES,
 )["train"]
+
+ds_typed = {
+    "molecular": dataset.filter(lambda example: len(example["gene"]) > 0),
+    "behavioral": dataset.filter(lambda example: len(example["gene"]) == 0),
+}
 
 ## Calculate differential gene expression between AD and NCI participants.
 
@@ -135,45 +142,13 @@ def is_ad_abstract(abstract: str) -> bool:
     return "alzheimer" in abstract.lower()
 
 
-dataset = dataset.filter(lambda example: len(example["gene"]) > 0)
-ad_mask = np.fromiter(
-    (is_ad_abstract(abstract) for abstract in dataset["abstract"]),
-    dtype=np.bool,
-)
-
-rng = np.random.default_rng(seed=seed)
-n_samples = ad_mask.sum()
-publications_ad = np.arange(len(ad_mask))[ad_mask]
-publications_other = rng.choice(
-    np.arange(len(ad_mask))[np.logical_not(ad_mask)], n_samples, replace=False
-)
-
-
-## Compare publication gene predictions
-def inputs(index: np.ndarray) -> list[str]:
+def inputs(dataset: datasets.Dataset, index: np.ndarray) -> list[str]:
     return [
         title + "[SEP]" + abstract
         for title, abstract in zip(
             dataset[index]["title"], dataset[index]["abstract"]
         )
     ]
-
-
-model = a2g.model.load_from_disk("a2g_768dim_per_batch_2")
-de_dataset2model = [
-    (
-        i,
-        de_idx[
-            np.arange(len(de_idx))[model.templates.indices[i] == de_idx][0]
-        ],
-    )
-    for i, tf in enumerate(np.isin(model.templates.indices, de_idx))
-    if tf
-]
-
-n_genes = len(de_dataset2model)
-de_model_idx, de_dataset_idx = zip(*de_dataset2model)
-symbols = [symbols[i] for i in de_dataset_idx]
 
 
 def organize_predictions(
@@ -192,152 +167,196 @@ def organize_predictions(
     )
 
 
-model_predictions = [
-    organize_predictions(
-        np.fromiter(
-            [
-                gene in labels
-                for labels in dataset[publications_ad]["gene"]
-                for gene in de_dataset_idx
-            ],
-            dtype=np.bool,
-        ),
-        np.fromiter(
-            [
-                gene in labels
-                for labels in dataset[publications_other]["gene"]
-                for gene in de_dataset_idx
-            ],
-            dtype=np.bool,
-        ),
-        "PubTator3",
+# Need to load up any model to get the template indices.
+model = a2g.model.load_from_disk("a2g_768dim_per_batch_2")
+
+de_dataset2model = [
+    (
+        i,
+        de_idx[
+            np.arange(len(de_idx))[model.templates.indices[i] == de_idx][0]
+        ],
     )
+    for i, tf in enumerate(np.isin(model.templates.indices, de_idx))
+    if tf
 ]
 
-for n in range(1, 7):
-    lpb = 2**n
-    name = f"a2g_768dim_per_batch_{lpb}"
-    model = a2g.model.load_from_disk(name)
+n_genes = len(de_dataset2model)
+de_model_idx, de_dataset_idx = zip(*de_dataset2model)
+symbols = [symbols[i] for i in de_dataset_idx]
 
-    model_predictions.append(
-        organize_predictions(
-            np.array(model.predict(inputs(publications_ad)))[
-                :, de_model_idx
-            ].flatten(),
-            np.array(model.predict(inputs(publications_other)))[
-                :, de_model_idx
-            ].flatten(),
-            f"A2G {lpb}",
-        )
+rng = np.random.default_rng(seed=seed)
+for k, ds in ds_typed.items():
+    ad_mask = np.fromiter(
+        (is_ad_abstract(abstract) for abstract in ds["abstract"]),
+        dtype=np.bool,
     )
 
-predictions = pd.concat(model_predictions, ignore_index=True)
+    n_samples = ad_mask.sum()
+    print(n_samples)
 
-
-## Relative Risk
-def events(x):
-    return x.sum() + 0.5
-
-
-def non_events(x):
-    return np.logical_not(x).sum() + 0.5
-
-
-sample_params = predictions.groupby(["tag", "gene", "label"]).agg(
-    [events, non_events]
-)
-sample_params.columns = [col for _, col in sample_params.columns]
-
-sample_params = sample_params.reset_index()
-sample_params = sample_params.pivot(
-    index=["label", "gene"], columns="tag", values=["events", "non_events"]
-)
-sample_params.columns = [f"{col[0]}_{col[1]}" for col in sample_params.columns]
-sample_params["relative_risk"] = (
-    sample_params["events_AD"]
-    * (sample_params["events_other"] + sample_params["non_events_other"])
-) / (
-    sample_params["events_other"]
-    * (sample_params["events_AD"] + sample_params["non_events_AD"])
-)
-sample_params["log_RR"] = np.log10(sample_params["relative_risk"])
-sample_params["se_log_RR"] = np.sqrt(
-    (
-        sample_params["non_events_AD"]
-        / (
-            sample_params["events_AD"]
-            * (sample_params["events_AD"] + sample_params["non_events_AD"])
-        )
+    publications_ad = np.arange(len(ad_mask))[ad_mask]
+    publications_other = rng.choice(
+        np.arange(len(ad_mask))[np.logical_not(ad_mask)],
+        n_samples,
+        replace=False,
     )
-    + (
-        sample_params["non_events_other"]
-        / (
-            sample_params["events_other"]
-            * (
+
+    model_predictions = []
+
+    if k == "molecular":
+        model_predictions = [
+            organize_predictions(
+                np.fromiter(
+                    [
+                        gene in labels
+                        for labels in ds[publications_ad]["gene"]
+                        for gene in de_dataset_idx
+                    ],
+                    dtype=np.bool,
+                ),
+                np.fromiter(
+                    [
+                        gene in labels
+                        for labels in ds[publications_other]["gene"]
+                        for gene in de_dataset_idx
+                    ],
+                    dtype=np.bool,
+                ),
+                "PubTator3",
+            )
+        ]
+
+    for n in range(1, 7):
+        lpb = 2**n
+        name = f"a2g_768dim_per_batch_{lpb}"
+        model = a2g.model.load_from_disk(name)
+
+        model_predictions.append(
+            organize_predictions(
+                np.array(model.predict(inputs(ds, publications_ad)))[
+                    :, de_model_idx
+                ].flatten(),
+                np.array(model.predict(inputs(ds, publications_other)))[
+                    :, de_model_idx
+                ].flatten(),
+                f"A2G {lpb}",
+            )
+        )
+
+    predictions = pd.concat(model_predictions, ignore_index=True)
+
+    ## Relative Risk
+    def events(x):
+        return x.sum() + 0.5
+
+    def non_events(x):
+        return np.logical_not(x).sum() + 0.5
+
+    sample_params = predictions.groupby(["tag", "gene", "label"]).agg(
+        [events, non_events]
+    )
+    sample_params.columns = [col for _, col in sample_params.columns]
+
+    sample_params = sample_params.reset_index()
+    sample_params = sample_params.pivot(
+        index=["label", "gene"], columns="tag", values=["events", "non_events"]
+    )
+    sample_params.columns = [
+        f"{col[0]}_{col[1]}" for col in sample_params.columns
+    ]
+    sample_params["relative_risk"] = (
+        sample_params["events_AD"]
+        * (sample_params["events_other"] + sample_params["non_events_other"])
+    ) / (
+        sample_params["events_other"]
+        * (sample_params["events_AD"] + sample_params["non_events_AD"])
+    )
+    sample_params["log_RR"] = np.log10(sample_params["relative_risk"])
+    sample_params["se_log_RR"] = np.sqrt(
+        (
+            sample_params["non_events_AD"]
+            / (
+                sample_params["events_AD"]
+                * (sample_params["events_AD"] + sample_params["non_events_AD"])
+            )
+        )
+        + (
+            sample_params["non_events_other"]
+            / (
                 sample_params["events_other"]
-                + sample_params["non_events_other"]
+                * (
+                    sample_params["events_other"]
+                    + sample_params["non_events_other"]
+                )
             )
         )
     )
-)
 
-z_crit = stats.norm.ppf(1 - (ALPHA / 2))
-sample_params["ci_low"] = sample_params["log_RR"] - (
-    sample_params["se_log_RR"] * z_crit
-)
-sample_params["ci_high"] = sample_params["log_RR"] + (
-    sample_params["se_log_RR"] * z_crit
-)
-
-mask = (sample_params["ci_low"].unstack().T > 0).any(axis=1)
-sample_params = sample_params.reset_index()
-sample_params = sample_params[
-    np.hstack([mask] * len(sample_params.label.unique()))
-]
-sample_params.loc[:, "alpha"] = sample_params["ci_low"] > 0
-
-categories = sample_params.label.unique()
-idx = categories != "PubTator3"
-categories[idx] = sorted(categories[idx], key=lambda x: int(x.split(" ")[-1]))
-
-cat_type = CategoricalDtype(categories=categories, ordered=True)
-sample_params["label"] = sample_params["label"].astype(cat_type)
-
-dodge_col = p9.position_dodge(width=0.8)
-p = (
-    p9.ggplot(
-        sample_params,
-        p9.aes(x="gene", y="log_RR", color="label", alpha="alpha"),
+    z_crit = stats.norm.ppf(1 - (ALPHA / 2))
+    sample_params["ci_low"] = sample_params["log_RR"] - (
+        sample_params["se_log_RR"] * z_crit
     )
-    + p9.geom_hline(p9.aes(yintercept=0), color="black")
-    + p9.geom_point(size=1, position=dodge_col)
-    + p9.geom_errorbar(
-        p9.aes(ymin="ci_low", ymax="ci_high"),
-        width=0.3,
-        size=0.3,
-        position=dodge_col,
+    sample_params["ci_high"] = sample_params["log_RR"] + (
+        sample_params["se_log_RR"] * z_crit
     )
-    + p9.scale_alpha_discrete(range=(0.3, 1))
-    + p9.scale_color_discrete()
-    + p9.labs(
-        y=r"$\log \left(\textrm{Relative Risk}\right)$",
-        x="Gene",
-        # For some reason RR > 1 gets cutoff unless padding with a couple lines
-        # above.
-        alpha=r"-\\-\\$\textrm{RR} > 1$\\(95\% confidence)",
-        color="Annotations",
+
+    mask = (sample_params["ci_low"].unstack().T > 0).any(axis=1)
+    sample_params = sample_params.reset_index()
+    sample_params = sample_params[
+        np.hstack([mask] * len(sample_params.label.unique()))
+    ]
+    sample_params.loc[:, "alpha"] = sample_params["ci_low"] > 0
+
+    categories = sample_params.label.unique()
+    idx = categories != "PubTator3"
+    categories[idx] = sorted(
+        categories[idx], key=lambda x: int(x.split(" ")[-1])
     )
-    + p9.theme(
-        text=p9.element_text(family=cfg.font_family, size=cfg.font_size),
-        axis_text_x=p9.element_text(
-            rotation=45,
-            ha="right",
-            rotation_mode="anchor",
-        ),
+
+    cat_type = CategoricalDtype(categories=categories, ordered=True)
+    sample_params["label"] = sample_params["label"].astype(cat_type)
+
+    # For some reason RR > 1 gets cutoff unless padding with a couple lines
+    # above when their are too many annotations.
+    padding = r"-\vspace{2.5em}\\" if k == "molecular" else r"\noindent"
+
+    dodge_col = p9.position_dodge(width=0.8)
+    p = (
+        p9.ggplot(
+            sample_params,
+            p9.aes(x="gene", y="log_RR", color="label", alpha="alpha"),
+        )
+        + p9.geom_hline(p9.aes(yintercept=0), color="black")
+        + p9.geom_point(size=1, position=dodge_col)
+        + p9.geom_errorbar(
+            p9.aes(ymin="ci_low", ymax="ci_high"),
+            width=0.3,
+            size=0.3,
+            position=dodge_col,
+        )
+        + p9.scale_alpha_discrete(range=(0.3, 1))
+        + p9.scale_color_discrete()
+        + p9.labs(
+            y=r"$\log \left(\textrm{Relative Risk}\right)$",
+            x="Gene",
+            alpha=padding + r"$\textrm{RR} > 1$\\(95\% confidence)",
+            color="Annotations",
+        )
+        # Based on the current results to keep axes locked between figures.
+        + p9.ylim((-4, 5.5))
+        + p9.theme(
+            text=p9.element_text(family=cfg.font_family, size=cfg.font_size),
+            axis_text_x=p9.element_text(
+                rotation=45,
+                ha="right",
+                rotation_mode="anchor",
+            ),
+        )
     )
-)
-p.save(
-    os.path.join(FIGDIR, f"relative_risk.{cfg.figure_ext}"),
-    width=cfg.fig_width,
-    height=cfg.fig_height,
-)
+
+    p.save(
+        os.path.join(FIGDIR, f"relative_risk_{k}.{cfg.figure_ext}"),
+        width=cfg.fig_width,
+        height=cfg.fig_height,
+    )
