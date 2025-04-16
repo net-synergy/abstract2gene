@@ -10,9 +10,9 @@ Results are pushed to the HuggingFace Hub.
 import argparse
 import os
 
+import example._config as cfg
 from abstract2gene.data import dataset_path
 from abstract2gene.dataset import bioc2dataset, mutators
-from example import config as cfg
 
 
 def clear_save(path):

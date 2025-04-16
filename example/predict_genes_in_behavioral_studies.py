@@ -15,7 +15,7 @@ import pandas as pd
 import plotnine as p9
 
 import abstract2gene as a2g
-from example import config as cfg
+import example._config as cfg
 
 seed = cfg.seeds["predict_genes_in_behavioral_studies"]
 FIGDIR = "figures/behavioral_genes"

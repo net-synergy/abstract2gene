@@ -8,7 +8,7 @@ import plotnine as p9
 import speakeasy2 as se2
 
 import abstract2gene as a2g
-from example import config as cfg
+import example._config as cfg
 
 N_PUBLICATIONS = 10
 FIGDIR = "figures/reference_similarities/"

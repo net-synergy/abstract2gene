@@ -23,9 +23,9 @@ import scipy.stats as stats
 from pandas.api.types import CategoricalDtype
 
 import abstract2gene as a2g
+import example._config as cfg
 from abstract2gene.data import PubmedDownloader
 from abstract2gene.dataset import mutators
-from example import config as cfg
 
 ## Private data
 TRANSCRIPTOME_PATH = "/disk4/data/adBulkTranscriptome/"

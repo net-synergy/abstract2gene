@@ -7,7 +7,7 @@ import optax
 from sentence_transformers import SentenceTransformer
 
 import abstract2gene as a2g
-import example.config as cfg
+import example._config as cfg
 from abstract2gene.data import encoder_path, model_path
 from abstract2gene.dataset import mutators
 

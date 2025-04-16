@@ -8,8 +8,8 @@ import pandas as pd
 from pandas.api.types import CategoricalDtype
 
 import abstract2gene as a2g
+import example._config as cfg
 from abstract2gene.dataset import mutators
-from example import config as cfg
 
 FIGDIR = "figures/model_comparison"
 

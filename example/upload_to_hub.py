@@ -12,8 +12,8 @@ import huggingface_hub as hf_hub
 import sentence_transformers
 from huggingface_hub.repocard import DatasetCard, DatasetCardData
 
+import example._config as cfg
 from abstract2gene.data import dataset_path, encoder_path
-from example import config as cfg
 
 ## Upload dataset
 save_path = dataset_path("bioc")

@@ -31,9 +31,9 @@ import numpy as np
 import speakeasy2 as se2
 from sentence_transformers import SentenceTransformer
 
+import example._config as cfg
 from abstract2gene.data import encoder_path
 from abstract2gene.dataset import mutators
-from example import config as cfg
 
 seed = cfg.seeds["label_embedding_similarity"]
 FIGDIR = "figures/label_similarities"

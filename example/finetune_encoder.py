@@ -11,9 +11,9 @@ from sentence_transformers.evaluation import TripletEvaluator
 from sentence_transformers.losses import MultipleNegativesRankingLoss
 from sentence_transformers.training_args import BatchSamplers
 
+import example._config as cfg
 from abstract2gene.data import encoder_path
 from abstract2gene.dataset import dataset_generator, mutators
-from example import config as cfg
 
 CHKPT_PATH = "models/"
 
