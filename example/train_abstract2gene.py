@@ -8,8 +8,9 @@ from sentence_transformers import SentenceTransformer
 
 import abstract2gene as a2g
 import example._config as cfg
-from abstract2gene.data import encoder_path, model_path
+from abstract2gene.data import model_path
 from abstract2gene.dataset import mutators
+from example._logging import log, set_log
 
 os.environ["XLA_FLAGS"] = (
     "--xla_gpu_enable_triton_softmax_fusion=true "
@@ -26,8 +27,11 @@ os.environ.update(
     }
 )
 
-seed = cfg.seeds["train_abstract2gene"]
-encoder_loc = encoder_path("pubmedncl-abstract2gene")
+EXPERIMENT = "train_abstract2gene"
+seed = cfg.seeds[EXPERIMENT]
+set_log(EXPERIMENT)
+
+encoder_loc = f"{cfg.hf_user}/pubmedncl-abstract2gene"
 encoder = SentenceTransformer(encoder_loc)
 
 dataset = datasets.load_dataset(
@@ -80,4 +84,10 @@ for n in range(1, 7):
 
     model.attach_encoder(encoder_loc)
     model.attach_templates(dataloader, template_size=32)
-    model.save_to_disk(model_path(f"a2g_768dim_per_batch_{2**n}"))
+    model.save_to_disk(model_path(f"abstract2gene_lpb_{2**n}"))
+
+    log(f"Final results (lpb = {2**n}):")
+    log(f"  Test loss: {results["test_loss"][-1]}")
+    log(f"  Test accuracy: {results["test_accuracy"][-1]}")
+
+log(f"Number of genes: {len(model.templates.values)}")

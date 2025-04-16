@@ -26,15 +26,20 @@ import abstract2gene as a2g
 import example._config as cfg
 from abstract2gene.data import PubmedDownloader
 from abstract2gene.dataset import mutators
+from example._logging import log, set_log
 
 ## Private data
 TRANSCRIPTOME_PATH = "/disk4/data/adBulkTranscriptome/"
 
 # Look for genes with a p-value below ALPHA
 ALPHA = 0.05
-FIGDIR = "figures/differential_expression/"
 
-seed = cfg.seeds["differential_expression"]
+EXPERIMENT = "differential_expression"
+FIGDIR = f"figures/{EXPERIMENT}/"
+
+seed = cfg.seeds[EXPERIMENT]
+set_log(EXPERIMENT)
+
 if not os.path.exists(FIGDIR):
     os.makedirs(FIGDIR)
 
@@ -182,6 +187,7 @@ de_dataset2model = [
 ]
 
 n_genes = len(de_dataset2model)
+log(f"DE genes in model: {n_genes}")
 de_model_idx, de_dataset_idx = zip(*de_dataset2model)
 symbols = [symbols[i] for i in de_dataset_idx]
 
@@ -193,7 +199,7 @@ for k, ds in ds_typed.items():
     )
 
     n_samples = ad_mask.sum()
-    print(n_samples)
+    log(f"AD samples ({k}): {n_samples}")
 
     publications_ad = np.arange(len(ad_mask))[ad_mask]
     publications_other = rng.choice(

@@ -20,7 +20,6 @@ We can use this example to compare embeddings produced by multiple models.
 
 import argparse
 import os
-import sys
 
 import datasets
 import igraph as ig
@@ -44,7 +43,7 @@ if not os.path.exists(FIGDIR):
 
 n_labels = 15
 samples_per_label = 100
-if __name__ == "__main__" and len(sys.argv) == 2:
+if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument(
         "n_labels",

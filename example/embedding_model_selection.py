@@ -1,6 +1,8 @@
 """Compare models and hyperparamaters."""
 
 import argparse
+import json
+import os
 
 import datasets
 from sentence_transformers import (
@@ -14,11 +16,14 @@ from sentence_transformers.training_args import BatchSamplers
 
 import example._config as cfg
 from abstract2gene.dataset import dataset_generator, mutators
+from example._logging import log, set_log
 
-CHKPT_PATH = "models/"
+EXPERIMENT = "embedding_model_selection"
 n_steps = 100
 n_trials = 20
-seed = cfg.seeds["embedding_model_selection"]
+
+seed = cfg.seeds[EXPERIMENT]
+set_log(EXPERIMENT)
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
@@ -93,14 +98,13 @@ evaluator = TripletEvaluator(
     negatives=dataset_test["negative"],
 )
 
-print("Pre fine-tuning accuracy")
+log("Pre fine-tuning accuracy")
 for name, model in cfg.models.items():
-    print(name)
     original_model = SentenceTransformer(model)
-    print(evaluator(original_model))
+    log(f"{name}: {evaluator(original_model)["cosine_accuracy"]}")
 
 # ## Select model
-print("\nTraining")
+log("\nTraining")
 for name, model in cfg.models.items():
 
     def hpo_model_init() -> SentenceTransformer:
@@ -124,8 +128,7 @@ for name, model in cfg.models.items():
         backend="optuna",
     )
 
-    print(best_trial)
-    print("")
+    log(f"{name}: {best_trial.objective}")
 
 
 ## Test winner further.
@@ -136,6 +139,7 @@ dataset_train = load_dataset(
 )
 dataset_train = dataset_train.remove_columns("negative")
 winners = ["ernie", "pubmedncl"]
+hyperparams: dict[str, dict] = {}
 
 print("\nFurther training")
 for name in winners:
@@ -160,6 +164,15 @@ for name in winners:
         direction="maximize",
         backend="optuna",
     )
+    hyperparams[name] = best_trial.hyperparameters
 
-    print(best_trial)
-    print("")
+    log(f"{name}: {best_trial.objective}")
+    log("Parameters:")
+    for k, v in best_trial.hyperparameters.items():
+        log(f"  {k}: {v}")
+
+if not os.path.exists("results"):
+    os.mkdir("results")
+
+with open(os.path.join("results", "hyperparameters.json"), "w") as js:
+    json.dump(hyperparams, js)

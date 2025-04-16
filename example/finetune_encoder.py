@@ -1,4 +1,6 @@
-import sys
+import argparse
+import json
+import os
 
 import datasets
 from datasets import Dataset
@@ -82,28 +84,55 @@ def finetune(
 
 
 if __name__ == "__main__":
+    if not os.path.exists(os.path.join("results", "hyperparameters.json")):
+        raise RuntimeError("No hyperparameters found. Run model selection.")
+
+    with open(os.path.join("results", "hyperparameters.json"), "r") as js:
+        hyperparams = json.load(js)
+
     n_steps = 10_000
-    batch_size = 48
-    warmup_ratio = 0.18
-    learning_rate = 6e-5
-    model_name = "PubMedNCL"
-
-    train_dataset = load_dataset(
-        cfg.EMBEDDING_TRAIN_FILES,
-        batch_size=batch_size,
-        n_batches=n_steps,
-        seed=seed,
+    n_test_steps = 50
+    parser = argparse.ArgumentParser()
+    parser.add_argument(
+        "n_steps",
+        required=False,
+        default=n_steps,
+        help="Number of steps per epoch.",
     )
-
-    test_dataset = load_dataset(
-        cfg.TEST_FILES, batch_size=batch_size, n_batches=50, seed=seed + 1
+    parser.add_argument(
+        "n_test_steps",
+        required=False,
+        default=n_test_steps,
+        help="Number of test steps.",
     )
+    args = parser.parse_args()
+    n_steps = args.n_steps
+    n_test_steps = args.n_test_steps
 
-    finetune(
-        model_name,
-        train_dataset,
-        test_dataset,
-        batch_size=batch_size,
-        learning_rate=learning_rate,
-        warmup_ratio=warmup_ratio,
-    )
+    for model_name, params in hyperparams:
+        batch_size = params["per_device_train_batch_size"]
+        warmup_ratio = params["warmup_ratio"]
+        learning_rate = params["learning_rate"]
+
+        train_dataset = load_dataset(
+            cfg.EMBEDDING_TRAIN_FILES,
+            batch_size=batch_size,
+            n_batches=n_steps,
+            seed=seed,
+        )
+
+        test_dataset = load_dataset(
+            cfg.TEST_FILES,
+            batch_size=batch_size,
+            n_batches=n_test_steps,
+            seed=seed + 1,
+        )
+
+        finetune(
+            model_name,
+            train_dataset,
+            test_dataset,
+            batch_size=batch_size,
+            learning_rate=learning_rate,
+            warmup_ratio=warmup_ratio,
+        )
