@@ -6,6 +6,7 @@ from typing import Any
 import datasets
 from qdrant_client import QdrantClient
 from qdrant_client.models import Distance, PointStruct, VectorParams
+from tqdm import tqdm
 
 import abstract2gene as a2g
 
@@ -51,30 +52,31 @@ def store_publications(
         fn_kwargs={"model": model},
         batched=True,
         batch_size=1000,
+        desc="Predicting genes",
     )
 
-    points = [
-        PointStruct(
-            id=example["pmid"],
-            vector=list(example["prediction"]),
-            payload={
-                "year": example["year"],
-                "title": example["title"],
-                "abstract": example["abstract"],
-                "pubtator3_genes": example["gene"],
-                "reference": example["reference"],
-            },
-        )
-        for example in dataset
-    ]
+    batch_size = 500
+    for i in tqdm(range(0, len(dataset), batch_size)):
+        fin = min(i + batch_size, len(dataset))
+        points = [
+            PointStruct(
+                id=example["pmid"],
+                vector=list(example["prediction"]),
+                payload={
+                    "year": example["year"],
+                    "title": example["title"],
+                    "abstract": example["abstract"],
+                    "pubtator3_genes": example["gene"],
+                    "reference": example["reference"],
+                },
+            )
+            for example in dataset.select(range(i, fin))
+        ]
 
-    batch_size = 100
-    for i in range(0, len(points), batch_size):
-        fin = min(i + batch_size, len(points))
         client.upsert(
             collection_name=collection_name,
             wait=False,
-            points=points[i:fin],
+            points=points,
         )
 
 
