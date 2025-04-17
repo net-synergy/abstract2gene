@@ -94,15 +94,15 @@ if __name__ == "__main__":
     n_test_steps = 50
     parser = argparse.ArgumentParser()
     parser.add_argument(
-        "n_steps",
-        required=False,
+        "--n_steps",
         default=n_steps,
+        type=int,
         help="Number of steps per epoch.",
     )
     parser.add_argument(
-        "n_test_steps",
-        required=False,
+        "--n_test_steps",
         default=n_test_steps,
+        type=int,
         help="Number of test steps.",
     )
     args = parser.parse_args()

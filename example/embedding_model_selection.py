@@ -28,15 +28,15 @@ set_log(EXPERIMENT)
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument(
-        "n_steps",
-        required=False,
+        "--n_steps",
         default=n_steps,
+        type=int,
         help="Number of steps per batch.",
     )
     parser.add_argument(
-        "n_trials",
-        required=False,
-        default=n_steps,
+        "--n_trials",
+        default=n_trials,
+        type=int,
         help="Number of trials to perform per model.",
     )
     args = parser.parse_args()

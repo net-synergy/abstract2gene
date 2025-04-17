@@ -33,9 +33,8 @@ n_cpu = cfg.max_cpu
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument(
-        "n_cpu",
+        "--n_cpu",
         type=int,
-        requried=False,
         default=cfg.max_cpu,
         help="Number of CPU processes to use to parse the Bioc files",
     )

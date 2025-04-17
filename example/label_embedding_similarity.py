@@ -46,15 +46,15 @@ samples_per_label = 100
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument(
-        "n_labels",
-        required=False,
+        "--n_labels",
         default=n_labels,
+        type=int,
         help="Number of genes to use.",
     )
     parser.add_argument(
-        "samples_per_label",
-        required=False,
+        "--samples_per_label",
         default=samples_per_label,
+        type=int,
         help="Samples to collect per gene.",
     )
     args = parser.parse_args()
