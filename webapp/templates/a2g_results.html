@@ -74,14 +74,9 @@
             <h4>{{ parent.title }}</h4>
             <p>
               Genes: {% for i in range(parent.genes["symbol"]|length) %}
-              <a
-                href="https://www.ncbi.nlm.nih.gov/gene/{{ parent.genes['entrez_id'][i] }}"
-              >
-                {{ parent.genes['symbol'][i] }} ({{
-                parent.genes['prediction'][i] }})
-              </a>
-              {% if (i + 1) < parent.genes["symbol"]|length %}, {% endif %} {%
-              endfor %}
+              <a href="https://www.ncbi.nlm.nih.gov/gene/{{ parent.genes['entrez_id'][i] }}">
+                {{ parent.genes['symbol'][i] }} ({{ parent.genes['prediction'][i] }})</a>{% if (i + 1) < parent.genes["symbol"]|length %}, {% endif %}
+	      {% endfor %}
             </p>
             <br />
             <p>{{ parent.abstract }}</p>
@@ -112,14 +107,9 @@
 		Behavioral
 		{% endif %}<br />
               Genes: {% for i in range(result.genes["symbol"]|length) %}
-              <a
-                href="https://www.ncbi.nlm.nih.gov/gene/{{ result.genes['entrez_id'][i] }}"
-              >
-                {{ result.genes['symbol'][i] }} ({{
-                result.genes['prediction'][i] }})
-              </a>
-              {% if (i + 1) < result.genes["symbol"]|length %}, {% endif %} {%
-              endfor %}
+              <a href="https://www.ncbi.nlm.nih.gov/gene/{{ result.genes['entrez_id'][i] }}">
+                {{ result.genes['symbol'][i] }} ({{result.genes['prediction'][i] }})</a>{% if (i + 1) < result.genes["symbol"]|length %}, {% endif %}
+	      {% endfor %}
             </p>
             <br />
             <p>{{ result.abstract }}</p>
