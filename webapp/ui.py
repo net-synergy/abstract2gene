@@ -9,7 +9,6 @@ from fastapi.templating import Jinja2Templates
 from qdrant_client import AsyncQdrantClient
 from qdrant_client.models import Filter
 
-import abstract2gene as a2g
 from webapp import config as cfg
 from webapp import query
 from webapp.genes import Gene, top_predictions
@@ -23,19 +22,31 @@ def _top_preds(predictions: list[float], genes: Gene) -> dict[str, list[str]]:
     )
 
 
-def home(request: Request, min_year: int):
+def home(request: Request, min_year: int, n_publications: int):
     year_range = {"min_year": min_year, "max_year": datetime.today().year}
+    n_publications = round(n_publications / 1e5)
+
     return templates.TemplateResponse(
-        request=request, name="search.html", context={"year_range": year_range}
+        request=request,
+        name="search.html",
+        context={
+            "year_range": year_range,
+            "n_publications": f"{n_publications / 10}",
+        },
     )
 
 
-def pmid_search_page(request: Request, min_year: int):
+def pmid_search_page(request: Request, min_year: int, n_publications: int):
     year_range = {"min_year": min_year, "max_year": datetime.today().year}
+    n_publications = round(n_publications / 1e5)
+
     return templates.TemplateResponse(
         request=request,
         name="search_pmid.html",
-        context={"year_range": year_range},
+        context={
+            "year_range": year_range,
+            "n_publications": f"{n_publications / 10}",
+        },
     )
 
 

@@ -72,19 +72,22 @@ with open(os.path.join(model_path(cfg.model_name), "genes.json"), "r") as js:
     genes = json.load(js)
 
 main_router = APIRouter(dependencies=[Depends(auth.is_authorized)])
-main_router.mount(
-    "/static", StaticFiles(directory="webapp/static"), name="static"
-)
 
 
 @main_router.get("/", response_class=HTMLResponse)
 async def abstract2gene(request: Request, client: ClientDep):
-    return ui.home(request, min_year)
+    collection = await client.get_collection(cfg.collection_name)
+    n_points = collection.points_count
+
+    return ui.home(request, min_year, n_points)
 
 
 @main_router.get("/pmid_search", response_class=HTMLResponse)
 async def pmid_search_page(request: Request, client: ClientDep):
-    return ui.pmid_search_page(request, min_year)
+    collection = await client.get_collection(cfg.collection_name)
+    n_points = collection.points_count
+
+    return ui.pmid_search_page(request, min_year, n_points)
 
 
 @main_router.post("/results/user_input", name="search")
@@ -202,6 +205,7 @@ async def analyze_references(
 app = FastAPI()
 app.include_router(main_router)
 app.include_router(auth.router)
+app.mount("/static", StaticFiles(directory="webapp/static"), name="static")
 
 
 @app.on_event("shutdown")

@@ -5,6 +5,7 @@
       rel="stylesheet"
       href="https://stackpath.bootstrapcdn.com/bootstrap/4.5.0/css/bootstrap.min.css"
     />
+    <link rel="stylesheet" href="/static/styles.css" />
   </head>
   <body>
     <div class="container mt-5">
@@ -74,15 +75,26 @@
 
           // Build the URL with query parameters
           var url =
-              "/results/pmid_search?" +
-	      "positives=" + positivePMIDs +
-	      "&negatives=" + negativePMIDs +
-	      "&year_min=" + yearMin +
-	      "&year_max=" + yearMax +
-	      "&behavioral=true" + "&molecular=true";
+            "/results/pmid_search?" +
+            "positives=" +
+            positivePMIDs +
+            "&negatives=" +
+            negativePMIDs +
+            "&year_min=" +
+            yearMin +
+            "&year_max=" +
+            yearMax +
+            "&behavioral=true" +
+            "&molecular=true";
 
           window.location.href = url;
         });
     </script>
+
+    <footer>
+      <div class="footer">
+        <p>Searching {{ n_publications }} million publications.</p>
+      </div>
+    </footer>
   </body>
 </html>
