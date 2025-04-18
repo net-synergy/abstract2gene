@@ -6,7 +6,7 @@ from datetime import datetime
 
 from fastapi import Request
 from fastapi.templating import Jinja2Templates
-from qdrant_client import QdrantClient
+from qdrant_client import AsyncQdrantClient
 from qdrant_client.models import Filter
 
 import abstract2gene as a2g
@@ -70,9 +70,9 @@ def _extract_points(points):
     ]
 
 
-def results(
+async def results(
     request: Request,
-    client: QdrantClient,
+    client: AsyncQdrantClient,
     session_id: str,
     year: tuple[int, int],
     behavioral: bool,
@@ -81,7 +81,7 @@ def results(
     genes: Gene,
     collection_name: str,
 ):
-    point = client.retrieve(
+    point = await client.retrieve(
         cfg.tmp_collection_name,
         [session_id],
         with_payload=True,
@@ -95,7 +95,7 @@ def results(
     title = point[0].payload["title"]
     abstract = point[0].payload["abstract"]
 
-    prediction, points = query.search_with_abstract(
+    points = await query.search_with_abstract(
         client,
         prediction,
         title,
@@ -107,12 +107,14 @@ def results(
         collection_name,
     )
 
-    last_page = (page * cfg.results_per_page) >= client.count(
+    n_points = await client.count(
         collection_name,
         count_filter=Filter(
             must=query.query_filters(year, behavioral, molecular),
         ),
-    ).count
+        exact=False,
+    )
+    last_page = (page * cfg.results_per_page) >= n_points.count
 
     top_genes = _top_preds(prediction, genes)
 
@@ -139,9 +141,9 @@ def results(
     )
 
 
-def search_pmid(
+async def search_pmid(
     request: Request,
-    client: QdrantClient,
+    client: AsyncQdrantClient,
     positive: list[int],
     negative: list[int],
     year: tuple[int, int],
@@ -154,13 +156,13 @@ def search_pmid(
     if not positive:
         return "Must provide at least one positive example."
 
-    positive_points = client.retrieve(
+    positive_points = await client.retrieve(
         collection_name, ids=positive, with_payload=True, with_vectors=True
     )
 
     negative_points = []
     if negative:
-        negative_points = client.retrieve(
+        negative_points = await client.retrieve(
             collection_name,
             ids=negative,
             with_payload=True,
@@ -180,7 +182,7 @@ def search_pmid(
     top_genes = _top_preds(main_point.vector, genes)
 
     query_filter = query.query_filters(year, behavioral, molecular)
-    points = client.recommend(
+    points = await client.recommend(
         collection_name,
         positive,
         negative,
@@ -190,10 +192,13 @@ def search_pmid(
         limit=cfg.results_per_page,
         offset=(page - 1) * cfg.results_per_page,
     )
-    last_page = (page * cfg.results_per_page) >= client.count(
+
+    n_points = await client.count(
         collection_name,
         count_filter=Filter(must=query_filter),
-    ).count
+        exact=False,
+    )
+    last_page = (page * cfg.results_per_page) >= n_points.count
 
     results = _extract_points(points)
     for i, pt in enumerate(points):
@@ -219,16 +224,16 @@ def search_pmid(
     )
 
 
-def analyze_references(
+async def analyze_references(
     request: Request,
-    client: QdrantClient,
+    client: AsyncQdrantClient,
     pmid: int,
     behavioral: bool,
     molecular: bool,
     genes: Gene,
     collection_name: str,
 ):
-    results = query.analyze_references(
+    results = await query.analyze_references(
         client, pmid, behavioral, molecular, collection_name
     )
     parent = {

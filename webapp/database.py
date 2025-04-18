@@ -4,16 +4,16 @@ import os
 from typing import Any
 
 import datasets
-from qdrant_client import QdrantClient
+from qdrant_client import AsyncQdrantClient
 from qdrant_client.models import Distance, PointStruct, VectorParams
 from tqdm import tqdm
 
 import abstract2gene as a2g
 
 
-def connect() -> QdrantClient:
+def connect() -> AsyncQdrantClient:
     qdrant_domain = os.getenv("A2G_QDRANT_URL") or "localhost"
-    return QdrantClient(url=f"http://{qdrant_domain}:6333")
+    return AsyncQdrantClient(url=f"http://{qdrant_domain}:6333")
 
 
 def _generate_points(
@@ -26,22 +26,22 @@ def _generate_points(
     return {"prediction": list(model.predict(abstracts))}
 
 
-def init_db(
-    client: QdrantClient, model: a2g.model.Model, collection_name: str
+async def init_db(
+    client: AsyncQdrantClient, model: a2g.model.Model, collection_name: str
 ):
     """Set up the gene vector collection."""
     if model.templates is None:
         raise RuntimeError("Templates not attached to this model.")
 
     n_genes = model.templates.indices.shape[0]
-    client.create_collection(
+    await client.create_collection(
         collection_name=collection_name,
         vectors_config=VectorParams(size=n_genes, distance=Distance.COSINE),
     )
 
 
-def store_publications(
-    client: QdrantClient,
+async def store_publications(
+    client: AsyncQdrantClient,
     dataset: datasets,
     model: a2g.model.Model,
     collection_name: str,
@@ -73,15 +73,15 @@ def store_publications(
             for example in dataset.select(range(i, fin))
         ]
 
-        client.upsert(
+        await client.upsert(
             collection_name=collection_name,
             wait=False,
             points=points,
         )
 
 
-def store_user_abstracts(
-    client: QdrantClient,
+async def store_user_abstracts(
+    client: AsyncQdrantClient,
     model: a2g.model.Model,
     title: str,
     abstract: str,
@@ -101,7 +101,7 @@ def store_user_abstracts(
         )
     ]
 
-    client.upsert(
+    await client.upsert(
         collection_name=collection_name,
         wait=True,
         points=point,

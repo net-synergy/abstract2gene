@@ -2,8 +2,10 @@
 
 __all__ = ["search_with_abstract", "get_min_year", "query_filters"]
 
+from typing import Sequence
+
 import numpy as np
-from qdrant_client import QdrantClient
+from qdrant_client import AsyncQdrantClient
 from qdrant_client.models import (
     FieldCondition,
     Filter,
@@ -12,24 +14,23 @@ from qdrant_client.models import (
     ValuesCount,
 )
 
-import abstract2gene as a2g
 from webapp import config as cfg
 
 
-def get_min_year(client: QdrantClient, collection_name: str) -> int:
+async def get_min_year(client: AsyncQdrantClient, collection_name: str) -> int:
     """Find the earliest publication year in the database."""
-    scroll = client.scroll(
+    scroll = await client.scroll(
         collection_name=collection_name, with_payload=True, with_vectors=False
-    )[0]
+    )
 
-    return min((point.payload["year"] for point in scroll if point.payload))
+    return min((point.payload["year"] for point in scroll[0] if point.payload))
 
 
 def query_filters(
     year: tuple[int, int] | None,
     behavioral: bool = True,
     molecular: bool = True,
-) -> list[FieldCondition]:
+) -> Sequence[FieldCondition]:
     query_filter = []
 
     if year is not None:
@@ -60,8 +61,8 @@ def query_filters(
     return query_filter
 
 
-def search_with_abstract(
-    client: QdrantClient,
+async def search_with_abstract(
+    client: AsyncQdrantClient,
     prediction: list[float],
     title: str,
     abstract: str,
@@ -70,41 +71,42 @@ def search_with_abstract(
     molecular: bool,
     page: int,
     collection_name: str,
-) -> tuple[list[float], list[ScoredPoint]]:
+) -> list[ScoredPoint]:
     """Find publications with similar genetic components to an abstract."""
-
     query_filter = query_filters(year, behavioral, molecular)
-    return (
-        prediction,
-        client.search(
-            collection_name=collection_name,
-            query_vector=prediction,
-            query_filter=Filter(must=query_filter),
-            with_payload=True,
-            with_vectors=True,
-            limit=cfg.results_per_page,
-            offset=(page - 1) * cfg.results_per_page,
-        ),
+    return await client.search(
+        collection_name=collection_name,
+        query_vector=prediction,
+        query_filter=Filter(must=query_filter),
+        with_payload=True,
+        with_vectors=True,
+        limit=cfg.results_per_page,
+        offset=(page - 1) * cfg.results_per_page,
     )
 
 
-def _references_in_db(
-    client: QdrantClient, collection_name: str, ref_list: list[int]
+async def _references_in_db(
+    client: AsyncQdrantClient, collection_name: str, ref_list: list[int]
 ) -> list[int]:
     """Filter reference_list to PMIDs in the database."""
-    n_points = client.get_collection(collection_name).points_count
+    collection = await client.get_collection(collection_name)
+    n_points = collection.points_count
+
     if not n_points:
         raise RuntimeError("Qdrant database is empty")
 
-    all_refs = [
-        ref.id
-        for ref in client.scroll(
+    records = [
+        val[0]
+        for val in await client.scroll(
             collection_name,
             limit=n_points,
             with_payload=False,
             with_vectors=False,
-        )[0]
+            timeout=30,
+        )
     ]
+
+    all_refs = [ref.id for ref in records]
     all_refs.sort()
 
     return [
@@ -114,29 +116,30 @@ def _references_in_db(
     ]
 
 
-def analyze_references(
-    client: QdrantClient,
+async def analyze_references(
+    client: AsyncQdrantClient,
     pmid: int,
     behavioral: bool,
     molecular: bool,
     collection_name: str,
 ):
     """Analyze genetic similarity between a publication and its references."""
-    parent = client.retrieve(
+    parent_records = await client.retrieve(
         collection_name=collection_name,
         ids=[pmid],
         with_payload=True,
         with_vectors=True,
-    )[0]
+    )
+    parent = parent_records[0]
 
-    ref_ids = _references_in_db(
+    ref_ids = await _references_in_db(
         client, collection_name, parent.payload["reference"]
     )
 
     if len(ref_ids) == 0:
         return {"parent": parent, "references": [], "scores": []}
 
-    references = client.retrieve(
+    references = await client.retrieve(
         collection_name=collection_name,
         ids=ref_ids,
         with_payload=True,

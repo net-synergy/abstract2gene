@@ -30,5 +30,7 @@ services:
     image: qdrant/qdrant:gpu-nvidia-latest
     ports:
       - "6333:6333"
+    environment:
+      - QDRANT__STORAGE__PERFORMANCE__ASYNC_SCORER=true
     volumes:
       - ${QDRANT_HOME}/qdrant:/qdrant/storage:z
