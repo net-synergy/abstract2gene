@@ -39,14 +39,17 @@ def pmid_search_page(request: Request, min_year: int):
     )
 
 
-def _extract_points(points):
+def _extract_points(points, scores=None):
+    if not scores:
+        scores = [None] * len(points)
+
     return [
         {
             k: (
                 point.id
                 if k == "pmid"
                 else (
-                    point.score
+                    score or point.score
                     if k == "similarity"
                     else (
                         len(point.payload[k])
@@ -65,7 +68,7 @@ def _extract_points(points):
                 "pubtator3_genes",
             )
         }
-        for point in points
+        for point, score in zip(points, scores)
         if point.payload
     ]
 
@@ -236,6 +239,7 @@ async def analyze_references(
     results = await query.analyze_references(
         client, pmid, behavioral, molecular, collection_name
     )
+
     parent = {
         "title": results["parent"].payload["title"],
         "abstract": results["parent"].payload["abstract"],
@@ -245,7 +249,7 @@ async def analyze_references(
     if len(results["references"]) == 0:
         return f"No references for {pmid} found in database."
 
-    references = _extract_points(results["references"])
+    references = _extract_points(results["references"], results["scores"])
     references = sorted(
         references, key=lambda x: x["similarity"], reverse=True
     )
@@ -261,5 +265,7 @@ async def analyze_references(
             "parent": parent,
             "results": references,
             "year_range": {"min_year": 0, "max_year": 2025},
+            "page": 1,
+            "last_page": True,
         },
     )

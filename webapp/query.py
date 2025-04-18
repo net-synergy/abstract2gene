@@ -85,37 +85,6 @@ async def search_with_abstract(
     )
 
 
-async def _references_in_db(
-    client: AsyncQdrantClient, collection_name: str, ref_list: list[int]
-) -> list[int]:
-    """Filter reference_list to PMIDs in the database."""
-    collection = await client.get_collection(collection_name)
-    n_points = collection.points_count
-
-    if not n_points:
-        raise RuntimeError("Qdrant database is empty")
-
-    records = [
-        val[0]
-        for val in await client.scroll(
-            collection_name,
-            limit=n_points,
-            with_payload=False,
-            with_vectors=False,
-            timeout=30,
-        )
-    ]
-
-    all_refs = [ref.id for ref in records]
-    all_refs.sort()
-
-    return [
-        ref
-        for ref in ref_list
-        if all_refs[np.searchsorted(all_refs, ref)] == ref
-    ]
-
-
 async def analyze_references(
     client: AsyncQdrantClient,
     pmid: int,
@@ -132,19 +101,15 @@ async def analyze_references(
     )
     parent = parent_records[0]
 
-    ref_ids = await _references_in_db(
-        client, collection_name, parent.payload["reference"]
-    )
-
-    if len(ref_ids) == 0:
-        return {"parent": parent, "references": [], "scores": []}
-
     references = await client.retrieve(
         collection_name=collection_name,
-        ids=ref_ids,
+        ids=parent.payload["reference"],
         with_payload=True,
         with_vectors=True,
     )
+
+    if len(references) == 0:
+        return {"parent": parent, "references": [], "scores": []}
 
     if not (behavioral and molecular):
         if behavioral:
@@ -160,11 +125,11 @@ async def analyze_references(
                 if len(ref.payload["pubtator3_genes"]) > 0
             ]
 
-    parent_vec = np.asarray(parent.vector)[None, :]
-    parent_vec = parent_vec / np.linalg.norm(parent_vec, axis=1, keepdims=True)
+    parent_vec = np.asarray(parent.vector)
+    parent_vec = parent_vec / np.linalg.norm(parent_vec)
     ref_vecs = np.vstack([np.asarray(ref.vector) for ref in references])
-    parent_vec = ref_vecs / np.linalg.norm(ref_vecs, axis=1, keepdims=True)
+    ref_vecs = ref_vecs / np.linalg.norm(ref_vecs, axis=1, keepdims=True)
 
-    scores = (parent_vec @ ref_vecs.T).tolist()
+    scores = (ref_vecs @ parent_vec).tolist()
 
     return {"parent": parent, "references": references, "scores": scores}
