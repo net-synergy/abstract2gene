@@ -114,14 +114,14 @@
             <br />
             <p>{{ result.abstract }}</p>
             <a
-              href="/results/pmid_search?positives={{ result.pmid }}&year_min={{ year_range.min_year }}&year_max={{ year_range.max_year }}"
+              href="/results/pmid_search?positives={{ result.pmid }}&year_min={{ year_range.min_year }}&year_max={{ year_range.max_year }}&behavioral={{ request.query_params['behavioral'] }}&molecular={{ request.query_params['molecular'] }}"
               role="button"
               class="btn btn-primary btn-return-home"
               >Search</a
             >
             {% if result.reference > 0 %}
             <a
-              href="/analyze/{{ result.pmid }}"
+              href="/analyze/{{ result.pmid }}/?behavioral={{ request.query_params['behavioral'] }}&molecular={{ request.query_params['molecular'] }}"
               role="button"
               class="btn btn-primary btn-return-home"
               >Analyze references ({{ result.reference }})</a

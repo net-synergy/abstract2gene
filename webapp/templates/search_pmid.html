@@ -74,16 +74,14 @@
 
           // Build the URL with query parameters
           var url =
-            "/results/pmid_search?positives=" +
-            positivePMIDs +
-            "&negatives=" +
-            negativePMIDs +
-            "&year_min=" +
-            yearMin +
-            "&year_max=" +
-            yearMax;
+              "/results/pmid_search?" +
+	      "positives=" + positivePMIDs +
+	      "&negatives=" + negativePMIDs +
+	      "&year_min=" + yearMin +
+	      "&year_max=" + yearMax +
+	      "&behavioral=true" + "&molecular=true";
 
-          window.location.href = url; // Redirect to the new page
+          window.location.href = url;
         });
     </script>
   </body>
