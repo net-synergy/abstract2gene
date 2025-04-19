@@ -138,7 +138,7 @@ dataset_train = load_dataset(
     cfg.EMBEDDING_TRAIN_FILES, 64, n_steps * 4, seed + 1
 )
 dataset_train = dataset_train.remove_columns("negative")
-winners = ["ernie", "pubmedncl"]
+winners = ["ernie", "PubMedNCL"]
 hyperparams: dict[str, dict] = {}
 
 print("\nFurther training")
@@ -150,7 +150,7 @@ for name in winners:
     print(name)
     trainer = SentenceTransformerTrainer(
         model=None,
-        args=args,
+        args=training_args,
         train_dataset=dataset_train,
         loss=hpo_loss_init,
         model_init=hpo_winner_init,
