@@ -1,5 +1,6 @@
 h1, h2, h3 {
     margin-left: 20px;
+    font-weight: bold;
 }
 
 table {
@@ -7,21 +8,47 @@ table {
 }
 
 h4 {
+    font-size: 24px;
+    font-weight: bold;
+}
+
+p {
+    font-size: 16px;
+}
+
+select {
+    background-color: #efefef;
+}
+
+.serif {
+    font-family: 'TeX Gyre Pagella', serif;
+}
+
+.sans {
+    font-family: 'TeX Gyre Heros', sans-serif;
+}
+
+.abstract {
+    font-family: 'TeX Gyre Pagella', serif;
     font-size: 18px;
 }
 
 .btn-return-home {
-    padding: 5px 10px;
-    margin-left: 5px;
-    margin-top: 5px;
+   padding: 5px 10px;
+   margin-left: 5px;
+   margin-top: 5px;
     margin-bottom: 5px;
 }
 
 .footer {
-  position: fixed;
-  left: 30px;
-  bottom: 0;
-  width: 100%;
-  padding: 10px;
-  font-size: 16px;
+    position: fixed;
+    left: 30px;
+    bottom: 0;
+    width: 100%;
+    padding: 10px;
+    font-size: 16px;
+}
+
+.background {
+    background: #efefef;
 }
