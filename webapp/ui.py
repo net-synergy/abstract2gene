@@ -2,6 +2,7 @@
 
 __all__ = ["home", "pmid_search_page", "results", "search_pmid"]
 
+import re
 from datetime import datetime
 
 from fastapi import Request
@@ -20,6 +21,10 @@ def _top_preds(predictions: list[float], genes: Gene) -> dict[str, list[str]]:
     return top_predictions(
         predictions, genes, k=cfg.min_genes, p=cfg.gene_thresh
     )
+
+
+def _format_abstract(abstract: str) -> str:
+    return re.sub(r" ([A-Z /]{4,}:)", r"<br /><br />\1", abstract)
 
 
 def home(request: Request, min_year: int, n_publications: int):
@@ -135,6 +140,7 @@ async def results(
     results = _extract_points(points)
     for i, pt in enumerate(points):
         results[i]["genes"] = _top_preds(pt.vector, genes)
+        results[i]["abstract"] = _format_abstract(abstract)
 
     return templates.TemplateResponse(
         request,
@@ -143,7 +149,7 @@ async def results(
             "action_title": "Publications similar to: ",
             "parent": {
                 "title": title,
-                "abstract": abstract,
+                "abstract": _format_abstract(abstract),
                 "genes": top_genes,
             },
             "results": results,
@@ -217,10 +223,11 @@ async def search_pmid(
     results = _extract_points(points)
     for i, pt in enumerate(points):
         results[i]["genes"] = _top_preds(pt.vector, genes)
+        results[i]["abstract"] = _format_abstract(results[i]["abstract"])
 
     parent = {
         "title": main_point.payload["title"],
-        "abstract": main_point.payload["abstract"],
+        "abstract": _format_abstract(main_point.payload["abstract"]),
         "genes": top_genes,
     }
 
@@ -253,7 +260,7 @@ async def analyze_references(
 
     parent = {
         "title": results["parent"].payload["title"],
-        "abstract": results["parent"].payload["abstract"],
+        "abstract": _format_abstract(results["parent"].payload["abstract"]),
         "genes": _top_preds(results["parent"].vector, genes),
     }
 
@@ -267,6 +274,7 @@ async def analyze_references(
 
     for i, pt in enumerate(results["references"]):
         references[i]["genes"] = _top_preds(pt.vector, genes)
+        references[i]["abstract"] = _format_abstract(references[i]["abstract"])
 
     return templates.TemplateResponse(
         request,
