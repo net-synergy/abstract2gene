@@ -23,6 +23,7 @@ dependencies = [
     "plotnine>=0.14.5",
     "pubmedparser2>=2.1.2",
     "scikit-learn>=1.6.1",
+    "scikit-misc>=0.5.1",
     "scipy>=1.15.1",
     "sentence-transformers[train]>=3.4.0",
     "speakeasy2>=0.1.6.a.1",
