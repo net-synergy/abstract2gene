@@ -7,7 +7,7 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
 
 ENV PYTHON_PATH=/app
 WORKDIR /app
-COPY ./pyproject.toml ./uv.lock example/populate_db.py /app/
+COPY ./pyproject.toml ./uv.lock example/webapp/populate_db.py /app/
 COPY ./abstract2gene /app/abstract2gene/
 
 RUN --mount=type=cache,target=/root/.cache \

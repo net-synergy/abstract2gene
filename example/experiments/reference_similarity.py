@@ -10,12 +10,13 @@ import speakeasy2 as se2
 import abstract2gene as a2g
 import example._config as cfg
 
+EXPERIMENT = "reference_similarity"
 N_PUBLICATIONS = 10
-FIGDIR = "figures/reference_similarities/"
+FIGDIR = f"figures/{EXPERIMENT}"
 MODEL = "a2g_768dim_per_batch_4"
 k = 5
 
-seed = cfg.seeds["reference_similarity"]
+seed = cfg.seeds[EXPERIMENT]
 
 if not os.path.exists(FIGDIR):
     os.makedirs(FIGDIR)
