@@ -19,6 +19,7 @@ def dataset_generator(
     batch_size: int = 32,
     n_batches: int = 100,
     seed: int = 0,
+    sep_token: str = "[SEP]",
 ) -> Dataset:
     """Convert labeled abstracts to anchor-positive-negative triplets.
 
@@ -39,7 +40,7 @@ def dataset_generator(
     unlabeled = labels.sum(axis=1) == 0
     sample_mask = np.logical_not(np.logical_or(unlabeled, overlabeled))
     samples = [
-        sample["title"] + "[SEP]" + sample["abstract"]
+        sample["title"] + sep_token + sample["abstract"]
         for mask, sample in zip(sample_mask, dataset)
         if mask
     ]

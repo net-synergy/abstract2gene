@@ -63,7 +63,7 @@ ground_truth = [
 ]
 ref_ds = dataset.select([i for ref_indices in indices for i in ref_indices])
 inputs = [
-    title + "[SEP]" + abstract
+    title + model.sep_token + abstract
     for title, abstract in zip(ref_ds["title"], ref_ds["abstract"])
 ]
 
@@ -150,7 +150,7 @@ p.save(
 
 ## Analyze parent publications
 inputs = [
-    title + "[SEP]" + abstract
+    title + model.sep_token + abstract
     for title, abstract in zip(
         dataset[parent_publications]["title"],
         dataset[parent_publications]["abstract"],

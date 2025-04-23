@@ -92,9 +92,10 @@ while len(random_behavioral_study) < len(selected_references):
     ):
         random_behavioral_study.append(ref)
 
+model = a2g.model.load_from_disk("a2g_768dim_per_batch_2")
 inputs = [
     [
-        dataset[ref]["title"] + "[SEP]" + dataset[ref]["abstract"]
+        dataset[ref]["title"] + model.sep_token + dataset[ref]["abstract"]
         for ref in (parent, behave_citation, molec_citation, random)
     ]
     for random, (parent, behave_citation, molec_citation) in zip(

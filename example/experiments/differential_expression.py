@@ -149,7 +149,7 @@ def is_ad_abstract(abstract: str) -> bool:
 
 def inputs(dataset: datasets.Dataset, index: np.ndarray) -> list[str]:
     return [
-        title + "[SEP]" + abstract
+        title + model.sep_token + abstract
         for title, abstract in zip(
             dataset[index]["title"], dataset[index]["abstract"]
         )

@@ -74,6 +74,8 @@ class Model(nnx.Module):
         self.templates: Templates | None = None
         self.encoder: SentenceTransformer | None = None
         self.seed = seed
+        self.sep_token = "[SEP]"
+        self.mask_token = "[MASK]"
 
         self._encoder_name = ""
 
@@ -107,6 +109,10 @@ class Model(nnx.Module):
         """
         self._encoder_name = name
         self.encoder = SentenceTransformer(name)
+
+        token_map = self.encoder.tokenizer.special_tokens_map
+        self.sep_token = token_map["sep_token"]
+        self.mask_token = token_map["mask_token"]
 
     def predict(
         self,

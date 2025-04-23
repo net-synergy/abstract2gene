@@ -119,40 +119,41 @@ training_args = SentenceTransformerTrainingArguments(
     data_seed=seed_generator(),
 )
 
-dataset_train = load_dataset(
-    cfg.EMBEDDING_TRAIN_FILES,
-    64,
-    n_steps,
-    labels="gene",
-    mask=["gene", "disease"],
-    seed_generator=seed_generator,
-)
-dataset_train = dataset_train["gene"].remove_columns("negative")
-dataset_test = load_dataset(
-    cfg.TEST_FILES,
-    64,
-    n_test_steps,
-    labels="gene",
-    mask=None,
-    seed_generator=seed_generator,
-)["gene"]
-
-evaluator = TripletEvaluator(
-    anchors=dataset_test["anchor"],
-    positives=dataset_test["positive"],
-    negatives=dataset_test["negative"],
-)
-
 ## Select model
-log("Pre fine-tuning accuracy")
-for name, model in cfg.models.items():
-    original_model = SentenceTransformer(model)
-    log(f"{name}: {evaluator(original_model)["cosine_accuracy"]}")
-
 hyperparams: dict[str, dict] = {}
 
 log("\nTraining")
 for name, model in cfg.models.items():
+    log(f"  {name}:")
+
+    original_model = SentenceTransformer(model)
+    dataset_train = load_dataset(
+        cfg.EMBEDDING_TRAIN_FILES,
+        original_model,
+        64,
+        n_steps,
+        labels="gene",
+        mask=["gene", "disease"],
+        seed_generator=seed_generator,
+    )["gene"]
+    dataset_train = dataset_train.remove_columns("negative")
+    dataset_test = load_dataset(
+        cfg.TEST_FILES,
+        original_model,
+        64,
+        n_test_steps,
+        labels="gene",
+        mask=None,
+        seed_generator=seed_generator,
+    )["gene"]
+
+    evaluator = TripletEvaluator(
+        anchors=dataset_test["anchor"],
+        positives=dataset_test["positive"],
+        negatives=dataset_test["negative"],
+    )
+
+    log(f"    Before: {evaluator(original_model)["cosine_accuracy"]}")
 
     def hpo_model_init() -> SentenceTransformer:
         return SentenceTransformer(model)
@@ -176,10 +177,10 @@ for name, model in cfg.models.items():
     )
     hyperparams[name] = best_trial.hyperparameters
 
-    log(f"{name}: {best_trial.objective}")
-    log("Parameters:")
+    log(f"    After: {best_trial.objective}")
+    log("    Parameters:")
     for k, v in best_trial.hyperparameters.items():
-        log(f"  {k}: {v}")
+        log(f"      {k}: {v}")
 
 log("")
 
