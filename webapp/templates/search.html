@@ -13,18 +13,18 @@
   </head>
 
   <body class="background sans">
-    <div class="container mt-5">
-      <h1 class="text-center">abstract2gene</h1>
+    <div class="container mt-5" style="margin-left: 3vw">
+      <h1 class="text-center">Abstract2Gene</h1>
       <h4>
         Search with a custom abstract (or
-        <a href="/pmid_search">search by PMID</a>)
+        <a href="/pmid_search" style="font-size: 1rem">search by PMID</a>)
       </h4>
       <form method="POST" action="{{ url_for('search') }}">
         <div class="form-group">
           <label for="title">Title</label>
           <input
             type="text"
-            class="form-control"
+            class="form-control sans"
             id="title"
             name="title"
             placeholder="Enter the title of the article"
@@ -37,7 +37,7 @@
             id="abstract"
             name="abstract"
             rows="15"
-            placeholder="Enter abstract text"
+            placeholder="Enter the abstract text"
           ></textarea>
         </div>
         <div class="form-group">
@@ -46,7 +46,7 @@
             <div class="col">
               <input
                 type="number"
-                class="form-control"
+                class="form-control sans"
                 id="year_min"
                 name="year_min"
                 min="{{ year_range.min_year }}"
@@ -56,7 +56,7 @@
             <div class="col">
               <input
                 type="number"
-                class="form-control"
+                class="form-control sans"
                 id="year_max"
                 name="year_max"
                 max="{{ year_range.max_year }}"
@@ -65,7 +65,7 @@
             </div>
           </div>
         </div>
-        <button type="submit" class="btn btn-primary">Search</button>
+        <button type="submit" class="sans btn btn-outline-dark">Search</button>
       </form>
     </div>
 

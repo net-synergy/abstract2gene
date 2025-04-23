@@ -24,7 +24,7 @@
   <body class="background sans">
     <form id="filterForm" method="GET">
       <fieldset>
-	<div class="sans" style="margin-left: 10px">
+	<div class="sans" style="margin-left: 3vw">
 	  Search filters:
 	  <select
 	    name="behavioral"
@@ -82,9 +82,9 @@
                 {{ parent.genes['symbol'][i] }} ({{ parent.genes['prediction'][i] }})</a>{% if (i + 1) < parent.genes["symbol"]|length %}, {% endif %}
 	      {% endfor %}
             </p>
-            <p class="abstract">{{ parent.abstract|safe }}</p>
+            {{ parent.abstract|safe }}
           </div>
-          <a href="/" role="button" class="btn btn-primary btn-return-home">
+          <a href="/" role="button" class="btn btn-outline-dark btn-return-home">
 	    New search
 	  </a>
         </td>
@@ -114,25 +114,25 @@
                 {{ result.genes['symbol'][i] }} ({{result.genes['prediction'][i] }})</a>{% if (i + 1) < result.genes["symbol"]|length %}, {% endif %}
 	      {% endfor %}
             </p>
-            <p class="abstract">{{ result.abstract|safe }}</p>
+            {{ result.abstract|safe }}
             <a
               href="/results/pmid_search?positives={{ result.pmid }}&year_min={{ year_range.min_year }}&year_max={{ year_range.max_year }}&behavioral={{ request.query_params['behavioral'] }}&molecular={{ request.query_params['molecular'] }}"
               role="button"
-              class="btn btn-primary btn-return-home"
+              class="btn btn-outline-dark btn-return-home"
               >Search</a
             >
             {% if result.reference > 0 %}
             <a
               href="/analyze/{{ result.pmid }}/?behavioral={{ request.query_params['behavioral'] }}&molecular={{ request.query_params['molecular'] }}"
               role="button"
-              class="btn btn-primary btn-return-home"
+              class="btn btn-outline-dark btn-return-home"
               >Analyze references ({{ result.reference }})</a
             >
             {% endif %}
             <a
               href="https://pubmed.ncbi.nlm.nih.gov/{{ result.pmid }}"
               role="botton"
-              class="btn btn-primary btn-return-home"
+              class="btn btn-outline-dark btn-return-home"
               >PubMed {{result.pmid}}</a
             >
           </td>
@@ -159,13 +159,13 @@
       string) %} {% endif %} {% if page > 2 %}
       <a
         href="{{ base_url }}?year_min={{ request.query_params['year_min'] }}&year_max={{ request.query_params['year_max'] }}{{ positives }}{{ negatives }}&behavioral={{ request.query_params['behavioral'] }}&molecular={{ request.query_params['molecular'] }}"
-        class="btn btn-primary"
+        class="btn btn-outline-dark"
         >First</a
       >
       {% endif %} {% if page > 1 %}
       <a
         href="{{ base_url }}?year_min={{ request.query_params['year_min'] }}&year_max={{ request.query_params['year_max'] }}{{ positives }}{{ negatives }}&page={{ page - 1 }}&behavioral={{ request.query_params['behavioral'] }}&molecular={{ request.query_params['molecular'] }}"
-        class="btn btn-primary"
+        class="btn btn-outline-dark"
         >Prev</a
       >
       {% endif %}
@@ -173,7 +173,7 @@
       {% if not last_page %}
       <a
         href="{{ base_url }}?year_min={{ request.query_params['year_min'] }}&year_max={{ request.query_params['year_max'] }}{{ positives }}{{ negatives }}&page={{ page + 1 }}&behavioral={{ request.query_params['behavioral'] }}&molecular={{ request.query_params['molecular'] }}"
-        class="btn btn-primary"
+        class="btn btn-outline-dark"
         >Next</a
       >
       {% endif %}

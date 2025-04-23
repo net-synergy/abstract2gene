@@ -24,7 +24,11 @@ def _top_preds(predictions: list[float], genes: Gene) -> dict[str, list[str]]:
 
 
 def _format_abstract(abstract: str) -> str:
-    return re.sub(r" ([A-Z /]{4,}:)", r"<br /><br />\1", abstract)
+    return re.sub(
+        r" ([A-Z /]{4,}:)",
+        r'<p/><p class="abstract">\1',
+        '<p class="abstract">' + abstract + "</p>",
+    )
 
 
 def home(request: Request, min_year: int, n_publications: int):
@@ -146,7 +150,7 @@ async def results(
         request,
         name="a2g_results.html",
         context={
-            "action_title": "Publications similar to: ",
+            "action_title": "Publications similar to:",
             "parent": {
                 "title": title,
                 "abstract": _format_abstract(abstract),
@@ -235,7 +239,7 @@ async def search_pmid(
         request,
         name="a2g_results.html",
         context={
-            "action_title": "Publications similar to: ",
+            "action_title": "Publications similar to:",
             "parent": parent,
             "results": results,
             "year_range": {"min_year": year[0], "max_year": year[1]},
@@ -280,7 +284,7 @@ async def analyze_references(
         request,
         name="a2g_results.html",
         context={
-            "action_title": "Reference similarity for",
+            "action_title": "Reference similarity for:",
             "parent": parent,
             "results": references,
             "year_range": {"min_year": 0, "max_year": 2025},

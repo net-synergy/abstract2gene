@@ -13,17 +13,18 @@
   </head>
 
   <body class="background sans">
-    <div class="container mt-5">
-      <h1 class="text-center">abstract2gene</h1>
+    <div class="container mt-5" style="margin-left: 3vw">
+      <h1 class="text-center">Abstract2Gene</h1>
       <h4>
-        Search with PMIDs (or <a href="/">search with a custom abstract</a>)
+        Search with PMIDs (or
+        <a href="/" style="font-size: 1rem">search with a custom abstract</a>)
       </h4>
       <form method="GET" action="/results/pmid_search" id="searchForm">
         <div class="form-group">
           <label for="positive">Positive PMIDs</label>
           <input
             type="text"
-            class="form-control"
+            class="form-control sans"
             id="positive"
             name="positive"
             placeholder="Enter PMIDs of positive examples (comma separated)"
@@ -33,7 +34,7 @@
           <label for="title">Negative PMIDs</label>
           <input
             type="text"
-            class="form-control"
+            class="form-control sans"
             id="negative"
             name="negative"
             placeholder="Enter PMIDs to avoid (comma separated)"
@@ -45,7 +46,7 @@
             <div class="col">
               <input
                 type="number"
-                class="form-control"
+                class="form-control sans"
                 id="year_min"
                 name="year_min"
                 min="{{ year_range.min_year }}"
@@ -55,7 +56,7 @@
             <div class="col">
               <input
                 type="number"
-                class="form-control"
+                class="form-control sans"
                 id="year_max"
                 name="year_max"
                 max="{{ year_range.max_year }}"
@@ -64,7 +65,7 @@
             </div>
           </div>
         </div>
-        <button type="submit" class="btn btn-primary">Search</button>
+        <button type="submit" class="sans btn btn-outline-dark">Search</button>
       </form>
     </div>
     <script>
