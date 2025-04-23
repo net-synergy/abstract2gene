@@ -84,7 +84,7 @@ for n in range(1, 7):
     results = trainer.train(max_epochs=20)
 
     model.attach_encoder(encoder_loc)
-    model.attach_templates(dataloader, template_size=32)
+    model.attach_templates(dataloader, template_size=cfg.template_size)
     model.save_to_disk(model_path(f"abstract2gene_lpb_{2**n}"))
 
     log(f"Final results (lpb = {2**n}):")

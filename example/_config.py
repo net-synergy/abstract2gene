@@ -58,6 +58,7 @@ MODELS = {
 hf_user = "dconnell"
 figure_type = "png"
 max_cpu = 1
+template_size = 32
 
 # To ensure reproducible results, each script is passed a random seed to use.
 # The random seed is a function of the script run order (the ith script gets 10
@@ -79,6 +80,7 @@ seeds = {
 hf_user = conf.get("hf_user", hf_user)
 models = conf.get("embedding-models", MODELS)
 max_cpu = conf.get("max_cpu", max_cpu)
+template_size = conf.get("template_size", template_size)
 text_width = 7.5
 font_family: str | None = None
 font_size: int | None = None
