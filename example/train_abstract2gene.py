@@ -24,21 +24,6 @@ from abstract2gene.data import model_path
 from abstract2gene.dataset import mutators
 from example._logging import log, set_log
 
-os.environ["XLA_FLAGS"] = (
-    "--xla_gpu_enable_triton_softmax_fusion=true "
-    "--xla_gpu_enable_triton_gemm=true "
-    "--xla_gpu_graph_level=0 "
-)
-
-os.environ.update(
-    {
-        "NCCL_LL128_BUFFSIZE": "-2",
-        "NCCL_LL_BUFFSIZE": "-2",
-        "NCCL_PROTO": "SIMPLE,LL,LL128",
-        "XLA_PYTHON_CLIENT_MEM_FRACTION": ".4",
-    }
-)
-
 EXPERIMENT = "train_abstract2gene"
 seed = cfg.seeds[EXPERIMENT]
 set_log(EXPERIMENT)

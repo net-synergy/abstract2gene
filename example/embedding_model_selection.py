@@ -1,4 +1,16 @@
-"""Compare models and hyperparamaters."""
+"""Compare models and search for hyperparamaters.
+
+Performs mini fine-tunings for different models to determine which models can
+be trained best for the abstract2gene purposes.
+
+Each model gets repeated trials of fine-tuning to find the best hyperparameters
+for fine-tuning that model suing a random search. The single best trial for
+each model is compared to find the model that performs the best.
+
+For the top models, a second experiment with more and longer trials is used to
+get a better prediction of the hyperparamters that should be used in the final
+fine-tuning.
+"""
 
 import argparse
 import json
@@ -19,7 +31,7 @@ from abstract2gene.dataset import dataset_generator, mutators
 from example._logging import log, set_log
 
 EXPERIMENT = "embedding_model_selection"
-n_steps = 100
+n_steps = 300
 n_trials = 20
 
 seed = cfg.seeds[EXPERIMENT]
@@ -103,14 +115,23 @@ training_args = SentenceTransformerTrainingArguments(
     fp16=False,
     bf16=True,
     batch_sampler=BatchSamplers.BATCH_SAMPLER,
+    num_train_epochs=1,
     eval_strategy="no",
     save_strategy="no",
-    logging_dir="logs",
+    logging_dir="logs/_tmp",
+    seed=seed,
+    data_seed=seed + 1,
 )
 
-dataset_train = load_dataset(cfg.EMBEDDING_TRAIN_FILES, 64, n_steps, 0)
+dataset_train = load_dataset(
+    cfg.EMBEDDING_TRAIN_FILES,
+    64,
+    n_steps,
+    mask=["gene", "disease"],
+    seed=seed + 2,
+)
 dataset_train = dataset_train.remove_columns("negative")
-dataset_test = load_dataset(cfg.TEST_FILES, 64, 50, seed)
+dataset_test = load_dataset(cfg.TEST_FILES, 64, 50, mask=None, seed=seed + 3)
 
 evaluator = TripletEvaluator(
     anchors=dataset_test["anchor"],
@@ -118,12 +139,12 @@ evaluator = TripletEvaluator(
     negatives=dataset_test["negative"],
 )
 
+## Select model
 log("Pre fine-tuning accuracy")
 for name, model in cfg.models.items():
     original_model = SentenceTransformer(model)
     log(f"{name}: {evaluator(original_model)["cosine_accuracy"]}")
 
-# ## Select model
 log("\nTraining")
 for name, model in cfg.models.items():
 
@@ -155,13 +176,17 @@ for name, model in cfg.models.items():
 # After running the above, mpnet and pubmedncl came out as the best model to
 # fine-tune.
 dataset_train = load_dataset(
-    cfg.EMBEDDING_TRAIN_FILES, 64, n_steps * 4, seed + 1
+    cfg.EMBEDDING_TRAIN_FILES,
+    64,
+    n_steps * 2,
+    mask=["gene", "disease"],
+    seed=seed + 4,
 )
 dataset_train = dataset_train.remove_columns("negative")
 winners = ["MPNet", "PubMedNCL"]
 hyperparams: dict[str, dict] = {}
 
-print("\nFurther training")
+log("\nFurther training")
 for name in winners:
 
     def hpo_winner_init() -> SentenceTransformer:
@@ -190,6 +215,8 @@ for name in winners:
     log("Parameters:")
     for k, v in best_trial.hyperparameters.items():
         log(f"  {k}: {v}")
+
+log("")
 
 if not os.path.exists("results"):
     os.mkdir("results")

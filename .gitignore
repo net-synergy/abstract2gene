@@ -7,3 +7,5 @@ tmp/
 qdrant/
 auth/
 a2g.toml
+logs/
+results/
