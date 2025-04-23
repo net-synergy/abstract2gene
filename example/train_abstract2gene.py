@@ -1,3 +1,15 @@
+"""Train the final abstract2gene prediction model.
+
+The abstract2gene model consists of an embedding model to convert the title +
+abstract into a fixed-width vector and a single dense layer. The dense layer is
+trained here (weights of the embedding model are fixed).
+
+The dataset abstract2gene is trained on is masked for genes + disease
+annotations to prevent the model from using that data in its predictions. The
+model is trained under multiple labels per batch conditions, resulting in one
+model for each "label per batch" value.
+"""
+
 import os
 
 import datasets
@@ -31,7 +43,7 @@ EXPERIMENT = "train_abstract2gene"
 seed = cfg.seeds[EXPERIMENT]
 set_log(EXPERIMENT)
 
-encoder_loc = f"{cfg.hf_user}/pubmedncl-abstract2gene"
+encoder_loc = f"{cfg.hf_user}/PubMedNCL-abstract2gene"
 encoder = SentenceTransformer(encoder_loc)
 
 dataset = datasets.load_dataset(

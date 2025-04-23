@@ -152,13 +152,13 @@ for name, model in cfg.models.items():
 
 
 ## Test winner further.
-# After running the above, ernie and pubmedncl came out as the best model to
+# After running the above, mpnet and pubmedncl came out as the best model to
 # fine-tune.
 dataset_train = load_dataset(
     cfg.EMBEDDING_TRAIN_FILES, 64, n_steps * 4, seed + 1
 )
 dataset_train = dataset_train.remove_columns("negative")
-winners = ["ernie", "PubMedNCL"]
+winners = ["MPNet", "PubMedNCL"]
 hyperparams: dict[str, dict] = {}
 
 print("\nFurther training")

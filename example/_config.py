@@ -45,13 +45,13 @@ TEST_FILES = [_file_template.format(archive=7, f_idx=0, f_total=21)]
 # will be used for models instead of MODELS.
 MODELS = {
     # General Purpose models
-    "ernie": "nghuyong/ernie-2.0-base-en",
-    "mpnet": "microsoft/mpnet-base",
-    "bert": "google-bert/bert-base-uncased",
+    "ERNIE": "nghuyong/ernie-2.0-base-en",
+    "MPNet": "microsoft/mpnet-base",
+    "BERT": "google-bert/bert-base-uncased",
     # Science fine-tuned models
-    "specter": "sentence-transformers/allenai-specter",
-    "specter2": "allenai/specter2_base",
-    "scibert": "allenai/scibert_scivocab_uncased",
+    "SPECTER": "sentence-transformers/allenai-specter",
+    "SPECTER2": "allenai/specter2_base",
+    "SciBERT": "allenai/scibert_scivocab_uncased",
     "PubMedNCL": "malteos/PubMedNCL",
 }
 
