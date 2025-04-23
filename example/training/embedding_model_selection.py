@@ -16,7 +16,6 @@ import argparse
 import json
 import os
 
-import datasets
 from sentence_transformers import (
     SentenceTransformer,
     SentenceTransformerTrainer,
@@ -27,15 +26,20 @@ from sentence_transformers.losses import MultipleNegativesRankingLoss
 from sentence_transformers.training_args import BatchSamplers
 
 import example._config as cfg
-from abstract2gene.dataset import dataset_generator, mutators
 from example._logging import log, set_log
+from example.training._utils import load_dataset, make_seed_generator
 
 EXPERIMENT = "embedding_model_selection"
+
+set_log(EXPERIMENT)
+seed = cfg.seeds[EXPERIMENT]
+seed_generator = make_seed_generator(seed)
+
 n_steps = 300
 n_trials = 20
-
-seed = cfg.seeds[EXPERIMENT]
-set_log(EXPERIMENT)
+n_test_steps = 50
+save_hyperparameters = True
+models = list(cfg.models.keys())
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
@@ -46,48 +50,40 @@ if __name__ == "__main__":
         help="Number of steps per batch.",
     )
     parser.add_argument(
+        "--n_test_steps",
+        default=n_test_steps,
+        type=int,
+        help="Number of steps per batch.",
+    )
+    parser.add_argument(
         "--n_trials",
         default=n_trials,
         type=int,
         help="Number of trials to perform per model.",
     )
+    parser.add_argument(
+        "--models", default=models, nargs="*", help="The models to test."
+    )
+    parser.add_argument(
+        "--save",
+        default=save_hyperparameters,
+        type=bool,
+        help="If true, store the determined hyperparameters in a JSON file.",
+    )
+
     args = parser.parse_args()
     n_steps = args.n_steps
     n_trials = args.n_trials
+    models = args.models
+    save_hyperparameters = args.save
 
-
-def load_dataset(
-    files: list[str],
-    batch_size: int,
-    n_batches: int,
-    mask: str | list[str] | None,
-    seed: int,
-) -> datasets.Dataset:
-    dataset = datasets.load_dataset(
-        f"{cfg.hf_user}/pubtator3_abstracts", data_files=files
-    )["train"]
-
-    log("Converting genes to human orthologs:")
-    log("  Before conversion:")
-    log(f"    {len(dataset.features["gene"].feature.names)} unique genes")
-    log(f"    {len([g for gs in dataset["gene"] for g in gs])} total genes")
-    dataset = mutators.translate_to_human_orthologs(
-        dataset, max_cpu=cfg.max_cpu
-    )
-    log("  After conversion:")
-    log(f"    {len(dataset.features["gene"].feature.names)} unique genes")
-    log(f"    {len([g for gs in dataset["gene"] for g in gs])} total genes")
-    log("")
-
-    if mask is not None:
-        dataset = mutators.mask_abstract(dataset, mask, max_cpu=cfg.max_cpu)
-
-    return dataset_generator(
-        dataset,
-        seed=seed,
-        batch_size=batch_size,
-        n_batches=n_batches,
-    )
+    for model in models:
+        if model not in list(cfg.models.keys()):
+            RuntimeError(
+                f"{model} not in known models. Make sure it's"
+                + " spelled exactly like in the experiments/_config.py"
+                + " file or add to the a2g.toml file."
+            )
 
 
 def hpo_search_space(trial):
@@ -119,19 +115,27 @@ training_args = SentenceTransformerTrainingArguments(
     eval_strategy="no",
     save_strategy="no",
     logging_dir="logs/_tmp",
-    seed=seed,
-    data_seed=seed + 1,
+    seed=seed_generator(),
+    data_seed=seed_generator(),
 )
 
 dataset_train = load_dataset(
     cfg.EMBEDDING_TRAIN_FILES,
     64,
     n_steps,
+    labels="gene",
     mask=["gene", "disease"],
-    seed=seed + 2,
+    seed_generator=seed_generator,
 )
-dataset_train = dataset_train.remove_columns("negative")
-dataset_test = load_dataset(cfg.TEST_FILES, 64, 50, mask=None, seed=seed + 3)
+dataset_train = dataset_train["gene"].remove_columns("negative")
+dataset_test = load_dataset(
+    cfg.TEST_FILES,
+    64,
+    n_test_steps,
+    labels="gene",
+    mask=None,
+    seed_generator=seed_generator,
+)["gene"]
 
 evaluator = TripletEvaluator(
     anchors=dataset_test["anchor"],
@@ -144,6 +148,8 @@ log("Pre fine-tuning accuracy")
 for name, model in cfg.models.items():
     original_model = SentenceTransformer(model)
     log(f"{name}: {evaluator(original_model)["cosine_accuracy"]}")
+
+hyperparams: dict[str, dict] = {}
 
 log("\nTraining")
 for name, model in cfg.models.items():
@@ -168,47 +174,6 @@ for name, model in cfg.models.items():
         direction="maximize",
         backend="optuna",
     )
-
-    log(f"{name}: {best_trial.objective}")
-
-
-## Test winner further.
-# After running the above, mpnet and pubmedncl came out as the best model to
-# fine-tune.
-dataset_train = load_dataset(
-    cfg.EMBEDDING_TRAIN_FILES,
-    64,
-    n_steps * 2,
-    mask=["gene", "disease"],
-    seed=seed + 4,
-)
-dataset_train = dataset_train.remove_columns("negative")
-winners = ["MPNet", "PubMedNCL"]
-hyperparams: dict[str, dict] = {}
-
-log("\nFurther training")
-for name in winners:
-
-    def hpo_winner_init() -> SentenceTransformer:
-        return SentenceTransformer(cfg.models[name])
-
-    print(name)
-    trainer = SentenceTransformerTrainer(
-        model=None,
-        args=training_args,
-        train_dataset=dataset_train,
-        loss=hpo_loss_init,
-        model_init=hpo_winner_init,
-        evaluator=evaluator,
-    )
-
-    best_trial = trainer.hyperparameter_search(
-        hp_space=hpo_search_space,
-        compute_objective=hpo_compute_objective,
-        n_trials=30,
-        direction="maximize",
-        backend="optuna",
-    )
     hyperparams[name] = best_trial.hyperparameters
 
     log(f"{name}: {best_trial.objective}")
@@ -218,8 +183,16 @@ for name in winners:
 
 log("")
 
-if not os.path.exists("results"):
-    os.mkdir("results")
+if save_hyperparameters:
+    if not os.path.exists("results"):
+        os.mkdir("results")
 
-with open(os.path.join("results", "hyperparameters.json"), "w") as js:
-    json.dump(hyperparams, js)
+    file_name = os.path.join("results", "hyperparameters.json")
+    if os.path.exists(file_name):
+        with open(file_name, "r") as js:
+            new_hyperparams = hyperparams
+            hyperparams = json.load(js)
+            hyperparams.update(new_hyperparams)
+
+    with open(file_name, "w") as js:
+        json.dump(hyperparams, js)

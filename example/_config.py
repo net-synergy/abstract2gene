@@ -68,7 +68,7 @@ template_size = 32
 seeds = {
     "create_from_bioc": 10,
     "embedding_model_selection": 20,
-    "finetune_encoder": 30,
+    "finetune_experiments": 30,
     "train_abstract2gene": 40,
     "test_abstract2gene": 50,
     "label_embedding_similarity": 60,

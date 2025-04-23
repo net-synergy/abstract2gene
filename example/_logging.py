@@ -18,10 +18,10 @@ def set_log(name: str):
     if not os.path.exists(LOGDIR):
         os.mkdir(LOGDIR)
 
-    _logfile = os.path.join(LOGDIR, name + ".log")
+    if not os.path.exists(os.path.join(LOGDIR, name)):
+        os.mkdir(os.path.join(LOGDIR, name))
 
-    with open(_logfile, "a") as f:
-        print(f"EXPERIMENT RAN: {datetime.today()}\n", file=f)
+    _logfile = os.path.join(LOGDIR, name, f"{datetime.today()}.log")
 
 
 def log(message: str):

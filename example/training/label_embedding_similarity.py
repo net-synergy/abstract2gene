@@ -34,9 +34,13 @@ import example._config as cfg
 from abstract2gene.data import encoder_path
 from abstract2gene.dataset import mutators
 
-seed = cfg.seeds["label_embedding_similarity"]
-FIGDIR = "figures/label_similarities"
-ENCODER = encoder_path("PubMedNCL-abstract2gene")
+EXPERIMENT = "label_embedding_similarity"
+seed = cfg.seeds[EXPERIMENT]
+FIGDIR = f"figures/{EXPERIMENT}"
+
+BEST_PRETRAINED = "SPECTER"
+ORIGINAL = "MPNet"
+FINE_TUNED = "MPNet-gene_and_disease-abstract2gene"
 
 if not os.path.exists(FIGDIR):
     os.makedirs(FIGDIR)
@@ -135,9 +139,9 @@ dataset = datasets.load_dataset(
 dataset = mutators.translate_to_human_orthologs(dataset, cfg.max_cpu)
 symbols = mutators.get_gene_symbols(dataset)
 
-scibert = SentenceTransformer(cfg.MODELS["scibert"])
-embed_orig = SentenceTransformer(cfg.MODELS["PubMedNCL"])
-embed_ft = SentenceTransformer(ENCODER)
+pretrained_best = SentenceTransformer(cfg.MODELS[BEST_PRETRAINED])
+embed_orig = SentenceTransformer(cfg.MODELS[ORIGINAL])
+embed_ft = SentenceTransformer(encoder_path(FINE_TUNED))
 
 for k in [1, 5]:
     ds_k, sym_k = filter_kth_prevalant_genes(
@@ -146,19 +150,19 @@ for k in [1, 5]:
 
     ds_k = ds_k.map(
         lambda examples: {
-            "scibert": [
-                scibert.encode(title + "[SEP]" + abstract)
+            BEST_PRETRAINED: [
+                pretrained_best.encode(title + "[SEP]" + abstract)
                 for title, abstract in zip(
                     examples["title"], examples["abstract"]
                 )
             ],
-            "pubmed-ncl": [
+            ORIGINAL: [
                 embed_orig.encode(title + "[SEP]" + abstract)
                 for title, abstract in zip(
                     examples["title"], examples["abstract"]
                 )
             ],
-            "fine-tuned": [
+            FINE_TUNED: [
                 embed_ft.encode(title + "[SEP]" + abstract)
                 for title, abstract in zip(
                     examples["title"], examples["abstract"]
@@ -199,10 +203,10 @@ for k in [1, 5]:
     ground_truth = ig.clustering.Clustering(clusters[indices])
 
     ds_k = ds_k.select(samples).with_format(
-        "numpy", columns=["pubmed-ncl", "fine-tuned", "scibert"]
+        "numpy", columns=[BEST_PRETRAINED, ORIGINAL, FINE_TUNED]
     )
 
-    for feature in ["pubmed-ncl", "fine-tuned", "scibert"]:
+    for feature in [BEST_PRETRAINED, ORIGINAL, FINE_TUNED]:
         corr = correlate(ds_k[feature])
         plot(
             corr,

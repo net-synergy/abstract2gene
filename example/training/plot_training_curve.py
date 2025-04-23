@@ -10,7 +10,7 @@ from tensorboard.backend.event_processing.event_accumulator import (
 
 import example._config as cfg
 
-EXPERIMENT = "fine_tune_encoders"
+EXPERIMENT = "fine_tune_experiments"
 FIGDIR = f"figures/{EXPERIMENT}"
 
 if not os.path.exists(FIGDIR):

@@ -35,7 +35,16 @@ dataset = datasets.load_dataset(
     f"{cfg.hf_user}/pubtator3_abstracts",
     data_files=cfg.A2G_TRAIN_FILES,
 )["train"]
+
+log("Converting genes to human orthologs:")
+log("  Before conversion:")
+log(f"    {len(dataset.features["gene"].feature.names)} unique genes")
+log(f"    {len([g for gs in dataset["gene"] for g in gs])} total genes")
 dataset = mutators.translate_to_human_orthologs(dataset, cfg.max_cpu)
+log("  After conversion:")
+log(f"    {len(dataset.features["gene"].feature.names)} unique genes")
+log(f"    {len([g for gs in dataset["gene"] for g in gs])} total genes")
+log("")
 
 genes = np.bincount(jax.tree.leaves(dataset["gene"]))
 mask = genes > cfg.template_size
