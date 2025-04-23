@@ -36,7 +36,13 @@ async def init_db(
     n_genes = model.templates.indices.shape[0]
     await client.create_collection(
         collection_name=collection_name,
-        vectors_config=VectorParams(size=n_genes, distance=Distance.COSINE),
+        vectors_config=VectorParams(
+            size=n_genes,
+            distance=Distance.COSINE,
+            on_disk=True,
+            datatype="float16",
+        ),
+        on_disk_payload=True,
     )
 
 
