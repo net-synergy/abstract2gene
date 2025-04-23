@@ -142,7 +142,7 @@
       };
     in {
       devShells.${system}.default = pkgs.mkShell {
-        packages = [ a2gEnv tex ];
+        packages = [ a2gEnv tex pkgs.gnumake ];
 
         env = {
           UV_NO_SYNC = "1";
