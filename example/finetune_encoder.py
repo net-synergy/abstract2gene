@@ -23,16 +23,51 @@ seed = cfg.seeds["finetune_encoder"]
 
 
 def load_dataset(
-    files: list[str], batch_size: int, n_batches: int, seed: int
-) -> Dataset:
+    files: list[str],
+    batch_size: int,
+    n_batches: int,
+    mask: str | list[str] | None,
+    labels: str | list[str],
+    seed_generator: rng,
+    permute_prob: float = 0,
+) -> dict[str, Dataset]:
     dataset = datasets.load_dataset(
         f"{cfg.hf_user}/pubtator3_abstracts", data_files=files
     )["train"]
-    dataset = mutators.mask_abstract(dataset, "gene", max_cpu=20)
 
-    return dataset_generator(
-        dataset, seed=seed, batch_size=batch_size, n_batches=n_batches
+    log("Converting genes to human orthologs:")
+    log("  Before conversion:")
+    log(f"    {len(dataset.features["gene"].feature.names)} unique genes")
+    log(f"    {len([g for gs in dataset["gene"] for g in gs])} total genes")
+    dataset = mutators.translate_to_human_orthologs(
+        dataset, max_cpu=cfg.max_cpu
     )
+    log("  After conversion:")
+    log(f"    {len(dataset.features["gene"].feature.names)} unique genes")
+    log(f"    {len([g for gs in dataset["gene"] for g in gs])} total genes")
+    log("")
+
+    if mask is not None:
+        dataset = mutators.mask_abstract(
+            dataset,
+            mask,
+            permute_prob,
+            seed=seed_generator(),
+            max_cpu=cfg.max_cpu,
+        )
+
+    if isinstance(labels, str):
+        labels = [labels]
+
+    return {
+        lab: dataset_generator(
+            dataset,
+            seed=seed_generator(),
+            batch_size=batch_size,
+            n_batches=n_batches,
+        )
+        for lab in labels
+    }
 
 
 def finetune(

@@ -132,6 +132,7 @@ def plot(corr, symbols, ground_truth, name, title):
 dataset = datasets.load_dataset(
     f"{cfg.hf_user}/pubtator3_abstracts", data_files=cfg.LABEL_SIMILARITY_FILES
 )["train"]
+dataset = mutators.translate_to_human_orthologs(dataset, cfg.max_cpu)
 symbols = mutators.get_gene_symbols(dataset)
 
 scibert = SentenceTransformer(cfg.MODELS["scibert"])

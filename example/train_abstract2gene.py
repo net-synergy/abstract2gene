@@ -38,9 +38,10 @@ dataset = datasets.load_dataset(
     f"{cfg.hf_user}/pubtator3_abstracts",
     data_files=cfg.A2G_TRAIN_FILES,
 )["train"]
+dataset = mutators.translate_to_human_orthologs(dataset, cfg.max_cpu)
 
 genes = np.bincount(jax.tree.leaves(dataset["gene"]))
-mask = genes > np.quantile(genes, 0.05)
+mask = genes > cfg.template_size
 gene_ids = np.arange(len(genes))[mask]
 
 dataset = dataset.filter(

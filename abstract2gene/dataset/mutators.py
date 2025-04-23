@@ -10,6 +10,7 @@ downloading large files.
 __all__ = [
     "attach_pubmed_genes",
     "get_gene_symbols",
+    "translate_to_human_orthologs",
     "mask_abstract",
     "attach_references",
 ]
@@ -22,6 +23,7 @@ import numpy as np
 import pandas as pd
 import pubmedparser
 import pubmedparser.ftp
+from tqdm import tqdm
 
 from abstract2gene.data import PubmedDownloader, default_cache_dir
 
@@ -130,13 +132,180 @@ def get_gene_symbols(dataset: datasets.Dataset) -> list[str]:
     return symbol_table["Symbol"].array.tolist()
 
 
+def translate_to_human_orthologs(
+    dataset: datasets.Dataset,
+    max_cpu: int = 1,
+) -> datasets.Dataset:
+    """Convert all genes to human orthologs.
+
+    For any gene IDs that are not associated with the human Tax ID (9606), look
+    for an ortholog and switch it out for the human gene. If no ortholog is
+    found, remove the label.
+    """
+    human_tax_id = 9606
+
+    def read_orthologs() -> pd.DataFrame:
+        pubmed_downloader = PubmedDownloader()
+        pubmed_downloader.files = ["gene_orthologs.gz"]
+        files = pubmed_downloader.download()
+
+        df = pd.read_table(
+            files[0],
+            header=0,
+            names=[
+                "TaxID",
+                "GeneID",
+                "Relationship",
+                "Other_TaxID",
+                "Other_GeneID",
+            ],
+            usecols=["TaxID", "GeneID", "Other_TaxID", "Other_GeneID"],
+        )
+
+        human_genes = pd.concat(
+            (
+                df["GeneID"][df["TaxID"] == human_tax_id],
+                df["Other_GeneID"][df["Other_TaxID"] == human_tax_id],
+            )
+        )
+
+        other_genes = pd.concat(
+            (
+                df["Other_GeneID"][df["TaxID"] == human_tax_id],
+                df["GeneID"][df["Other_TaxID"] == human_tax_id],
+            )
+        )
+
+        gene_map = pd.DataFrame(
+            {"HumanGeneID": human_genes, "OtherGeneID": other_genes}
+        ).sort_values("OtherGeneID")
+
+        human_genes.sort_values().drop_duplicates()
+
+        return (human_genes, gene_map)
+
+    def is_human(gene_id: int | np.int_) -> np.bool_:
+        idx = np.searchsorted(human_genes, gene_id)
+
+        return (idx < len(human_genes)) and (human_genes.iloc[idx] == gene_id)
+
+    def retrieve_human_ortholog(gene_id: int | np.int_) -> int | None:
+        if is_human(gene_id):
+            return int(gene_id)
+
+        idx = np.searchsorted(gene_map["OtherGeneID"], gene_id)
+
+        if gene_map["OtherGeneID"].iloc[idx] == gene_id:
+            return gene_map["HumanGeneID"].iloc[idx]
+
+        return None
+
+    def convert_genes(example: dict[str, Any]):
+        return {
+            "gene": [
+                gene2idx(gene)
+                for gene in (
+                    retrieve_human_ortholog(idx2gene(gene_id))
+                    for gene_id in example["gene"]
+                )
+                if gene is not None
+            ]
+        }
+
+    def idx2gene(gene_id: int) -> int:
+        return old_genes[gene_id]
+
+    def gene2idx(gene: int) -> np.int_:
+        return np.searchsorted(new_genes, gene)
+
+    human_genes, gene_map = read_orthologs()
+    features = dataset.features.copy()
+    old_genes = [int(gene) for gene in features["gene"].feature.names]
+
+    new_genes = [
+        gene
+        for gene in {
+            retrieve_human_ortholog(gene)
+            for gene in tqdm(old_genes, desc="Reindexing genes")
+        }
+        if gene
+    ]
+    new_genes.sort()
+
+    features["gene"] = datasets.Sequence(
+        datasets.ClassLabel(names=[str(gene) for gene in new_genes])
+    )
+
+    return dataset.map(
+        convert_genes,
+        features=features,
+        batched=False,
+        num_proc=max_cpu,
+        desc="Converting to human genes",
+    )
+
+
 def mask_abstract(
     dataset: datasets.Dataset,
     ann_type: str | Sequence[str],
+    permute_prob: float = 0.0,
+    seed: int = 0,
     mask_token: str = "[MASK]",
     max_cpu: int = 1,
 ) -> datasets.Dataset:
     """Replace annotations in abstracts with mask token."""
+
+    def token_selector_generator(n_picks):
+        if permute_prob <= 0:
+            return lambda _: mask_token
+
+        rng = np.random.default_rng(seed)
+        count_pick = 0
+        picks = rng.random((n_picks,)) > permute_prob
+        n_pubs = len(dataset)
+        count_pub = 0
+        pubs = rng.integers(0, n_pubs, (n_picks,))
+
+        def get_token(ann_types: Sequence[str]) -> str:
+            nonlocal count_pick, picks, count_pub, pubs, rng
+
+            if count_pick == n_picks:
+                count_pick = 0
+                picks = rng.random((n_picks,)) > permute_prob
+
+            count_pick += 1
+            if picks[count_pick - 1]:
+                return mask_token
+
+            n_anns = 0
+            while n_anns == 0:
+                if count_pub == n_picks:
+                    count_pub = 0
+                    pubs = rng.integers(0, n_pubs, (n_picks,))
+
+                publication = dataset[int(pubs[count_pub])]
+                count_pub += 1
+                n_anns = len(
+                    [
+                        ann
+                        for ann_type in ann_types
+                        for ann in publication[ann_type]
+                    ]
+                )
+
+            choice = int(rng.integers(0, n_anns, (1,)))
+            anns = [
+                ann
+                for ann in publication["annotation"]
+                if ann["type"].lower() in ann_types
+            ]
+            ann = anns[choice]
+
+            pos_start = ann["offset"]
+            pos_end = pos_start + ann["length"]
+            return publication["abstract"][pos_start:pos_end]
+
+        return get_token
 
     def mask_example(
         example: dict[str, list[Any]],
@@ -157,7 +326,7 @@ def mask_abstract(
         return {
             "abstract": "".join(
                 (
-                    letter if mask[i] > 0 else mask_token
+                    (letter if mask[i] > 0 else get_token(ann_types))
                     for i, letter in enumerate(abstract)
                     if mask[i]
                 )
@@ -168,6 +337,8 @@ def mask_abstract(
         ann_type = [ann_type]
 
     ann_type = [t.lower() for t in ann_type]
+    get_token = token_selector_generator(10_000)
+
     return dataset.map(
         mask_example,
         batched=False,
