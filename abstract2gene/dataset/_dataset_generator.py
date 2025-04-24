@@ -39,10 +39,10 @@ def dataset_generator(
     overlabeled = labels.sum(axis=1) > max_labels
     unlabeled = labels.sum(axis=1) == 0
     sample_mask = np.logical_not(np.logical_or(unlabeled, overlabeled))
+    sub_ds = dataset.select(np.arange(len(dataset))[sample_mask])
     samples = [
-        sample["title"] + sep_token + sample["abstract"]
-        for mask, sample in zip(sample_mask, dataset)
-        if mask
+        title + sep_token + abstract
+        for title, abstract in zip(sub_ds["title"], sub_ds["abstract"])
     ]
     labels = labels[sample_mask, :]
     labels = labels[:, labels.sum(axis=0) > 2]
