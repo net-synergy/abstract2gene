@@ -1,3 +1,4 @@
+import time
 from typing import Callable, TypeAlias
 
 import datasets
@@ -30,10 +31,29 @@ def load_dataset(
     labels: str | list[str],
     seed_generator: rng,
     permute_prob: float = 0,
+    attempt: int = 0,
 ) -> dict[str, Dataset]:
-    dataset = datasets.load_dataset(
-        f"{cfg.hf_user}/pubtator3_abstracts", data_files=files
-    )["train"]
+    try:
+        dataset = datasets.load_dataset(
+            f"{cfg.hf_user}/pubtator3_abstracts", data_files=files
+        )["train"]
+    except ValueError as err:
+        # When it can't find the dataset on the HF Hub for some reason.
+        if attempt > 3:
+            raise err
+
+        time.sleep(5)
+        return load_dataset(
+            files,
+            model,
+            batch_size,
+            n_batches,
+            mask,
+            labels,
+            seed_generator,
+            permute_prob,
+            attempt + 1,
+        )
 
     dataset = mutators.translate_to_human_orthologs(
         dataset, max_cpu=cfg.max_cpu
