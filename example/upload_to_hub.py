@@ -69,8 +69,9 @@ if upload_dataset:
 
 ## Upload encoder
 if upload_model:
-    local_name = "MPNet-gene_and_disease-abstract2gene"
-    remote_name = "mpnet-abstract2gene"
+    local_name = cfg.encoder
+    base_name, _, project_name = local_name.split("-")
+    remote_name = "-".join((base_name, project_name))
     encoder = sentence_transformers.SentenceTransformer(
         encoder_path(local_name)
     )
