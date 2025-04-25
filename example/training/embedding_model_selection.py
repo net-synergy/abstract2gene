@@ -123,10 +123,11 @@ training_args = SentenceTransformerTrainingArguments(
 hyperparams: dict[str, dict] = {}
 
 log("\nTraining")
-for name, model in cfg.models.items():
-    log(f"  {name}:")
+for name in models:
+    model_path = cfg.models[name]
 
-    original_model = SentenceTransformer(model)
+    log(f"  {name}:")
+    original_model = SentenceTransformer(model_path)
     dataset_train = load_dataset(
         cfg.EMBEDDING_TRAIN_FILES,
         original_model,
@@ -156,7 +157,7 @@ for name, model in cfg.models.items():
     log(f"    Before: {evaluator(original_model)["cosine_accuracy"]}")
 
     def hpo_model_init() -> SentenceTransformer:
-        return SentenceTransformer(model)
+        return SentenceTransformer(model_path)
 
     print(name)
     trainer = SentenceTransformerTrainer(
