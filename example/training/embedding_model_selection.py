@@ -120,8 +120,6 @@ training_args = SentenceTransformerTrainingArguments(
 )
 
 ## Select model
-hyperparams: dict[str, dict] = {}
-
 log("\nTraining")
 for name in models:
     model_path = cfg.models[name]
@@ -176,25 +174,23 @@ for name in models:
         direction="maximize",
         backend="optuna",
     )
-    hyperparams[name] = best_trial.hyperparameters
 
     log(f"    After: {best_trial.objective}")
     log("    Parameters:")
     for k, v in best_trial.hyperparameters.items():
         log(f"      {k}: {v}")
 
-log("")
+    if save_hyperparameters:
+        if not os.path.exists("results"):
+            os.mkdir("results")
 
-if save_hyperparameters:
-    if not os.path.exists("results"):
-        os.mkdir("results")
+        file_name = os.path.join("results", "hyperparameters.json")
+        hyperparams = {name: best_trial.hyperparameters}
+        if os.path.exists(file_name):
+            with open(file_name, "r") as js:
+                new_hyperparams = hyperparams
+                hyperparams = json.load(js)
+                hyperparams.update(new_hyperparams)
 
-    file_name = os.path.join("results", "hyperparameters.json")
-    if os.path.exists(file_name):
-        with open(file_name, "r") as js:
-            new_hyperparams = hyperparams
-            hyperparams = json.load(js)
-            hyperparams.update(new_hyperparams)
-
-    with open(file_name, "w") as js:
-        json.dump(hyperparams, js)
+        with open(file_name, "w") as js:
+            json.dump(hyperparams, js)
