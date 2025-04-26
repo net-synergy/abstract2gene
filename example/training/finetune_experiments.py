@@ -84,7 +84,6 @@ from abstract2gene.data import encoder_path
 from example._logging import log, set_log
 from example.training._utils import load_dataset, make_seed_generator
 
-CHKPT_PATH = "models/"
 LOG_PATH = "logs/"
 EXPERIMENT = "finetune_experiments"
 
@@ -117,10 +116,9 @@ def finetune(
         batch_sampler=BatchSamplers.BATCH_SAMPLER,
         per_device_train_batch_size=batch_size,
         per_device_eval_batch_size=batch_size,
+        save_strategy="no",
         eval_strategy="steps",
         eval_steps=250,
-        save_steps=2500,
-        save_total_limit=2,
         logging_steps=250,
         logging_first_step=True,
         logging_dir=f"{LOG_PATH}/{model_name}/{experiment_name}",
