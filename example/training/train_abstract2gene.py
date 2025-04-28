@@ -10,8 +10,6 @@ model is trained under multiple labels per batch conditions, resulting in one
 model for each "label per batch" value.
 """
 
-import os
-
 import datasets
 import jax
 import numpy as np
@@ -28,7 +26,7 @@ EXPERIMENT = "train_abstract2gene"
 seed = cfg.seeds[EXPERIMENT]
 set_log(EXPERIMENT)
 
-encoder_loc = f"{cfg.hf_user}/PubMedNCL-abstract2gene"
+encoder_loc = f"{cfg.hf_user}/{cfg.encoder["remote_name"]}"
 encoder = SentenceTransformer(encoder_loc)
 sep_token = encoder.tokenizer.special_tokens_map["sep_token"]
 

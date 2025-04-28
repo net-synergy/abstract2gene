@@ -1,14 +1,14 @@
-"""Compare models and search for hyperparamaters.
+"""Compare models and search for hyperparameters.
 
-Performs mini fine-tunings for different models to determine which models can
-be trained best for the abstract2gene purposes.
+Performs mini fine-tuning experiments for different models to determine which
+models can be trained best for the abstract2gene purposes.
 
 Each model gets repeated trials of fine-tuning to find the best hyperparameters
 for fine-tuning that model suing a random search. The single best trial for
 each model is compared to find the model that performs the best.
 
 For the top models, a second experiment with more and longer trials is used to
-get a better prediction of the hyperparamters that should be used in the final
+get a better prediction of the hyperparameters that should be used in the final
 fine-tuning.
 """
 
@@ -35,8 +35,8 @@ set_log(EXPERIMENT)
 seed = cfg.seeds[EXPERIMENT]
 seed_generator = make_seed_generator(seed)
 
-n_steps = 300
-n_trials = 20
+n_steps = 1000
+n_trials = 30
 n_test_steps = 50
 save_hyperparameters = True
 models = list(cfg.models.keys())
@@ -65,17 +65,16 @@ if __name__ == "__main__":
         "--models", default=models, nargs="*", help="The models to test."
     )
     parser.add_argument(
-        "--save",
-        default=save_hyperparameters,
-        type=bool,
-        help="If true, store the determined hyperparameters in a JSON file.",
+        "--no_save",
+        action="store_true",
+        help="Don't store the hyperparameters JSON file.",
     )
 
     args = parser.parse_args()
     n_steps = args.n_steps
     n_trials = args.n_trials
     models = args.models
-    save_hyperparameters = args.save
+    save_hyperparameters = not args.no_save
 
     for model in models:
         if model not in list(cfg.models.keys()):

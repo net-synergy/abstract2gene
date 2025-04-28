@@ -11,7 +11,7 @@ try:
 except (KeyError, FileNotFoundError):
     conf = {}
 
-model_name = "a2g_768dim_per_batch_16"
+labels_per_batch = 16
 min_genes = 5
 gene_thresh = 0.5
 results_per_page = 20
@@ -21,7 +21,9 @@ hf_user = "dconnell"
 hf_user = experiment_conf.get("hf_user", hf_user)
 
 if "engine" in conf:
-    model_name = conf["engine"].get("model_name", model_name)
+    labels_per_batch = conf["engine"].get("labels_per_batch", labels_per_batch)
+
+model_name = f"abstract2gene_lpb_{labels_per_batch}"
 
 if "ui" in conf:
     ui = conf["ui"]

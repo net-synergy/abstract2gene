@@ -69,16 +69,13 @@ if upload_dataset:
 
 ## Upload encoder
 if upload_model:
-    local_name = cfg.encoder
-    base_name, _, project_name = local_name.split("-")
-    remote_name = "-".join((base_name, project_name))
-    encoder = sentence_transformers.SentenceTransformer(
-        encoder_path(local_name)
-    )
+    local_path = cfg.encoder["local_name"]
+    remote_name = cfg.encoder["remote_name"]
+    encoder = sentence_transformers.SentenceTransformer(local_path)
     encoder.push_to_hub(
         f"{cfg.hf_user}/{remote_name}",
         private=True,
-        local_model_path=encoder_path(local_name),
+        local_model_path=local_path,
         train_datasets=[f"{cfg.hf_user}/pubtator3_abstracts"],
         exist_ok=True,
     )

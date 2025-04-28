@@ -59,7 +59,7 @@ hf_user = "dconnell"
 figure_type = "png"
 max_cpu = 1
 template_size = 32
-encoder = "MPNet-gene_and_disease-abstract2gene"
+encoder = {"base_model": "MPNet", "fine_tuning": "permute"}
 
 # To ensure reproducible results, each script is passed a random seed to use.
 # The random seed is a function of the script run order (the ith script gets 10
@@ -80,7 +80,6 @@ seeds = {
 
 hf_user = conf.get("hf_user", hf_user)
 models = conf.get("embedding-models", MODELS)
-encoder = conf.get("encoder", encoder)
 max_cpu = conf.get("max_cpu", max_cpu)
 template_size = conf.get("template_size", template_size)
 text_width = 7.5
@@ -89,6 +88,15 @@ font_size: int | None = None
 
 if "seeds" in conf:
     seeds.update(conf["seeds"])
+
+if "selected-embedding-model" in conf:
+    _encoder = conf["selected-embedding-model"]
+    encoder.update(_encoder)
+
+encoder["local_name"] = (
+    f"{encoder["base_model"]}_{encoder["fine_tuning"]}_abstract2gene"
+)
+encoder["remote_name"] = f"{encoder["base_model"]}_abstract2gene"
 
 if "figures" in conf:
     _fig_conf = conf["figures"]
