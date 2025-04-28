@@ -77,6 +77,14 @@ def plot(df):
         gene_and_disease_name
     )
 
+    x_lim = min(
+        [
+            accuracy.loc[accuracy["model"] == model, "step"].max()
+            for model in accuracy.model.unique()
+        ]
+    )
+    df = df[df["step"] <= x_lim]
+
     eval_types = ["Unmasked", "Genes Masked", gene_and_disease_name]
     cat_type = CategoricalDtype(categories=eval_types, ordered=True)
     df["eval_type"] = df["eval_type"].astype(cat_type)

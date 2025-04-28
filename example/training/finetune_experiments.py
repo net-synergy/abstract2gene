@@ -98,13 +98,23 @@ def finetune(
     experiment_name: str,
     train_dataset: Dataset | Sequence[Dataset],
     test_dataset: Dataset | dict[str, Dataset],
+    continue_training: bool,
     batch_size: int,
     learning_rate: float,
     warmup_ratio: float,
     seed: int,
     data_seed: int,
 ):
-    model = SentenceTransformer(cfg.models[model_name])
+    save_path = encoder_path(f"{model_name}-{experiment_name}-abstract2gene")
+
+    if continue_training and os.path.exists(save_path):
+        model = SentenceTransformer(save_path)
+    else:
+        if not os.path.exists(save_path):
+            print("Model has no previous save starting from base model.")
+
+        model = SentenceTransformer(cfg.models[model_name])
+
     loss = MultipleNegativesRankingLoss(model)
 
     args = SentenceTransformerTrainingArguments(
@@ -172,9 +182,7 @@ def finetune(
         for k in test_dataset:
             log(f"  {k}: {evaluator(model)[k + "_cosine_accuracy"]}")
 
-    model.save_pretrained(
-        encoder_path(f"{model_name}-{experiment_name}-abstract2gene")
-    )
+    model.save_pretrained(save_path)
 
 
 if __name__ == "__main__":
@@ -189,6 +197,7 @@ if __name__ == "__main__":
     experiments = [1, 2, 3, 5]
     n_steps = 10_000
     n_test_steps = 100
+    continue_train = False
 
     parser = argparse.ArgumentParser()
     parser.add_argument(
@@ -213,12 +222,21 @@ if __name__ == "__main__":
         nargs="*",
         help="Which experiments to run.",
     )
+    parser.add_argument(
+        "--continue_training",
+        action="store_true",
+        help=(
+            "Continue training a saved model instead of starting from "
+            + "the base model."
+        ),
+    )
 
     args = parser.parse_args()
     n_steps = args.n_steps
     n_test_steps = args.n_test_steps
     models = args.models
     experiments = args.experiments
+    continue_training = args.continue_training
 
     for model in models:
         if model not in list(hyperparams.keys()):
@@ -284,6 +302,7 @@ if __name__ == "__main__":
                 "unmasked",
                 train_dataset,
                 test_dataset,
+                continue_training,
                 batch_size=batch_size,
                 learning_rate=learning_rate,
                 warmup_ratio=warmup_ratio,
@@ -308,6 +327,7 @@ if __name__ == "__main__":
                 "gene_only",
                 train_dataset,
                 test_dataset,
+                continue_training,
                 batch_size=batch_size,
                 learning_rate=learning_rate,
                 warmup_ratio=warmup_ratio,
@@ -332,6 +352,7 @@ if __name__ == "__main__":
                 "gene_and_disease",
                 train_dataset,
                 test_dataset,
+                continue_training,
                 batch_size=batch_size,
                 learning_rate=learning_rate,
                 warmup_ratio=warmup_ratio,
@@ -360,6 +381,7 @@ if __name__ == "__main__":
                     train_dataset["gene"],
                 ),
                 test_dataset,
+                continue_training,
                 batch_size=batch_size,
                 learning_rate=learning_rate,
                 warmup_ratio=warmup_ratio,
@@ -385,6 +407,7 @@ if __name__ == "__main__":
                 "permute",
                 train_dataset,
                 test_dataset,
+                continue_training,
                 batch_size=batch_size,
                 learning_rate=learning_rate,
                 warmup_ratio=warmup_ratio,
