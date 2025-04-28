@@ -41,8 +41,7 @@ def extract_metric(metric, eval_type, model, experiment):
     ).sort_values("time")
     delta = df["step"][1] - df["step"][0]
     df["step"] = list(range(delta, delta * (df.shape[0] + 1), delta))
-
-    return df
+    return df[np.logical_not(df["experiment"] == "multi_phase")]
 
 
 def _locate(df, step, experiment, eval_type, pos, label):
@@ -172,7 +171,7 @@ def plot(df):
         + p9.theme(
             text=p9.element_text(family=cfg.font_family, size=cfg.font_size),
         )
-        + p9.facet_wrap("model", nrow=2)
+        + p9.facet_wrap("model", ncol=1)
     )
 
 

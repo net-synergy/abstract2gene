@@ -18,18 +18,18 @@ Experiment 1: Control (No masking).
   compare performance of masked models. Otherwise trained exactly like
   experiment 1.
 
-Experiment 1: Predict Genes Masking Genes only.
+Experiment 2: Predict Genes Masking Genes only.
   Fine tune using only a dataset with gene labels. The dataset's abstracts have
   their gene symbols masked (based on PubTator3's annotations).
 
-Experiment 2: Predict Genes Masking Genes and Disease.
+Experiment 3: Predict Genes Masking Genes and Disease.
   Like experiment 1, but in addition to masking genes, mask diseases. This is
   intended to prevent the model from learning the strong relationship between
   diseases and the set of genes that are frequently studied with them. Without
   this additional masking there is a fear the model is using disease name as a
   proxy for related genes.
 
-Experiment 3: Alternate Predicting Genes and Disease Masking Both.
+Experiment 4: Alternate Predicting Genes and Disease Masking Both.
   Use two datasets for training. Both datasets have genes and diseases masked
   from their abstracts. One dataset uses genes as labels the other uses disease
   as labels. Since training plateaus when using only genes for labels, try
@@ -39,13 +39,14 @@ Experiment 3: Alternate Predicting Genes and Disease Masking Both.
   after gene training plateaus, then back to gene to hone it into the correct
   task again.
 
-Experiment 4: Predict Genes Masking and Permuting Genes
-  Instead of using only masking, permute some percent (25%) of genes. All genes
-  are corrupted. But some are corrupted by replacing them with another gene at
-  random. Previous experiments show training with masked abstracts causes
-  performance on unmasked abstracts to degrade. This intends on showing the
-  model genes it is used to them, but, make them uninformative so it doesn't
-  try to use them in predictions.
+Experiment 5: Predict Genes Masking and Permuting Genes and Disease
+  Instead of using only masking, permute some percent (25%) of genes and
+  disease. All genes and disease symbols are corrupted. But some are corrupted
+  by replacing them with another gene (or disease) at random. Previous
+  experiments show training with masked abstracts causes performance on
+  unmasked abstracts to degrade. This intends on showing the model genes it is
+  used to them, but, make them uninformative so it doesn't try to use them in
+  predictions.
 
 All experiments use the same number of total training steps and are evaluated
 on the same evaluators (gene labels + no masking and gene labels + masking gene
@@ -107,7 +108,6 @@ def finetune(
     loss = MultipleNegativesRankingLoss(model)
 
     args = SentenceTransformerTrainingArguments(
-        output_dir=f"models/{model_name}_{experiment_name}",
         learning_rate=learning_rate,
         warmup_ratio=warmup_ratio,
         fp16=False,
@@ -185,7 +185,8 @@ if __name__ == "__main__":
         hyperparams = json.load(js)
 
     models = list(hyperparams.keys())
-    experiments = [1, 2, 3, 4, 5]
+    # By default, do not run experiment 4 as it has not improved performance.
+    experiments = [1, 2, 3, 5]
     n_steps = 10_000
     n_test_steps = 100
 
@@ -373,7 +374,7 @@ if __name__ == "__main__":
                 model,
                 batch_size=batch_size,
                 n_batches=n_steps,
-                mask="gene",
+                mask=["gene", "disease"],
                 permute_prob=0.25,
                 labels="gene",
                 seed_generator=seed_generator,
