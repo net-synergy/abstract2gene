@@ -187,7 +187,7 @@ def test(
     for i in range(n_batches):
         start = i * batch_size
         samples = [
-            title + model.sep_token + abstract
+            title + "[SEP]" + abstract
             for title, abstract in zip(
                 titles[start : (start + batch_size)],
                 abstracts[start : (start + batch_size)],

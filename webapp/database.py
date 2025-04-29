@@ -20,7 +20,7 @@ def _generate_points(
     examples: dict[str, list[Any]], model: a2g.model.Model
 ) -> dict[str, Any]:
     abstracts = [
-        title + model.sep_token + abstract
+        title + "[SEP]" + abstract
         for title, abstract in zip(examples["title"], examples["abstract"])
     ]
     return {"prediction": list(model.predict(abstracts))}
@@ -94,7 +94,7 @@ async def store_user_abstracts(
     session_id: str,
     collection_name: str,
 ):
-    prediction = model.predict(title + model.sep_token + abstract).tolist()[0]
+    prediction = model.predict(title + "[SEP]" + abstract).tolist()[0]
 
     point = [
         PointStruct(

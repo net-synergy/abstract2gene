@@ -258,7 +258,6 @@ if __name__ == "__main__":
         test_dataset = {
             "unmasked": load_dataset(
                 cfg.TEST_FILES,
-                model,
                 batch_size=batch_size,
                 n_batches=n_test_steps,
                 mask=None,
@@ -267,7 +266,6 @@ if __name__ == "__main__":
             )["gene"],
             "genes_masked": load_dataset(
                 cfg.TEST_FILES,
-                model,
                 batch_size=batch_size,
                 n_batches=n_test_steps,
                 mask="gene",
@@ -276,7 +274,6 @@ if __name__ == "__main__":
             )["gene"],
             "genes_and_disease_masked": load_dataset(
                 cfg.TEST_FILES,
-                model,
                 batch_size=batch_size,
                 n_batches=n_test_steps,
                 mask=["gene", "disease"],
@@ -289,7 +286,6 @@ if __name__ == "__main__":
             log("\nExperiment 1:")
             train_dataset = load_dataset(
                 cfg.EMBEDDING_TRAIN_FILES,
-                model,
                 batch_size=batch_size,
                 n_batches=n_steps,
                 mask=None,
@@ -314,7 +310,6 @@ if __name__ == "__main__":
             log("\nExperiment 2:")
             train_dataset = load_dataset(
                 cfg.EMBEDDING_TRAIN_FILES,
-                model,
                 batch_size=batch_size,
                 n_batches=n_steps,
                 mask="gene",
@@ -339,7 +334,6 @@ if __name__ == "__main__":
             log("\nExperiment 3:")
             train_dataset = load_dataset(
                 cfg.EMBEDDING_TRAIN_FILES,
-                model,
                 batch_size=batch_size,
                 n_batches=n_steps,
                 mask=["gene", "disease"],
@@ -364,7 +358,6 @@ if __name__ == "__main__":
             log("\nExperiment 4:")
             train_dataset = load_dataset(
                 cfg.EMBEDDING_TRAIN_FILES,
-                model,
                 batch_size=batch_size,
                 n_batches=n_steps // 3,
                 mask=["gene", "disease"],
@@ -393,7 +386,6 @@ if __name__ == "__main__":
             log("\nExperiment 5:")
             train_dataset = load_dataset(
                 cfg.EMBEDDING_TRAIN_FILES,
-                model,
                 batch_size=batch_size,
                 n_batches=n_steps,
                 mask=["gene", "disease"],

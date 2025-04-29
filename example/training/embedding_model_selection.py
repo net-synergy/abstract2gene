@@ -119,44 +119,42 @@ training_args = SentenceTransformerTrainingArguments(
 )
 
 ## Select model
+dataset_train = load_dataset(
+    cfg.EMBEDDING_TRAIN_FILES,
+    64,
+    n_steps,
+    labels="gene",
+    mask=["gene", "disease"],
+    seed_generator=seed_generator,
+)["gene"]
+dataset_train = dataset_train.remove_columns("negative")
+dataset_test = load_dataset(
+    cfg.TEST_FILES,
+    64,
+    n_test_steps,
+    labels="gene",
+    mask=None,
+    seed_generator=seed_generator,
+)["gene"]
+
+
+evaluator = TripletEvaluator(
+    anchors=dataset_test["anchor"],
+    positives=dataset_test["positive"],
+    negatives=dataset_test["negative"],
+)
+
 log("\nTraining")
 for name in models:
     model_path = cfg.models[name]
 
     log(f"  {name}:")
     original_model = SentenceTransformer(model_path)
-    dataset_train = load_dataset(
-        cfg.EMBEDDING_TRAIN_FILES,
-        original_model,
-        64,
-        n_steps,
-        labels="gene",
-        mask=["gene", "disease"],
-        seed_generator=seed_generator,
-    )["gene"]
-    dataset_train = dataset_train.remove_columns("negative")
-    dataset_test = load_dataset(
-        cfg.TEST_FILES,
-        original_model,
-        64,
-        n_test_steps,
-        labels="gene",
-        mask=None,
-        seed_generator=seed_generator,
-    )["gene"]
-
-    evaluator = TripletEvaluator(
-        anchors=dataset_test["anchor"],
-        positives=dataset_test["positive"],
-        negatives=dataset_test["negative"],
-    )
-
     log(f"    Before: {evaluator(original_model)["cosine_accuracy"]}")
 
     def hpo_model_init() -> SentenceTransformer:
         return SentenceTransformer(model_path)
 
-    print(name)
     trainer = SentenceTransformerTrainer(
         model=None,
         args=training_args,

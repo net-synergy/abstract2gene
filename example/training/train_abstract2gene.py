@@ -28,7 +28,6 @@ set_log(EXPERIMENT)
 
 encoder_loc = f"{cfg.hf_user}/{cfg.encoder["remote_name"]}"
 encoder = SentenceTransformer(encoder_loc)
-sep_token = encoder.tokenizer.special_tokens_map["sep_token"]
 
 dataset = datasets.load_dataset(
     f"{cfg.hf_user}/pubtator3_abstracts",
@@ -56,7 +55,7 @@ dataset = dataset.filter(
 dataset = mutators.mask_abstract(dataset, "gene").map(
     lambda example: {
         "embedding": encoder.encode(
-            example["title"] + sep_token + example["abstract"]
+            example["title"] + "[SEP]" + example["abstract"]
         )
     },
     remove_columns=["abstract"],

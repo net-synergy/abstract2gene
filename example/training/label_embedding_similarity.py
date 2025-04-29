@@ -144,10 +144,6 @@ embed_orig = SentenceTransformer(cfg.MODELS[ORIGINAL])
 embed_ft = SentenceTransformer(encoder_path(FINE_TUNED))
 
 
-def sep_token(model: SentenceTransformer) -> str:
-    return model.tokenizer.special_tokens_map["sep_token"]
-
-
 for k in [1, 5]:
     ds_k, sym_k = filter_kth_prevalant_genes(
         dataset, k=k, n_genes=n_labels, symbols=symbols
@@ -156,21 +152,19 @@ for k in [1, 5]:
     ds_k = ds_k.map(
         lambda examples: {
             BEST_PRETRAINED: [
-                pretrained_best.encode(
-                    title + sep_token(pretrained_best) + abstract
-                )
+                pretrained_best.encode(title + "[SEP]" + abstract)
                 for title, abstract in zip(
                     examples["title"], examples["abstract"]
                 )
             ],
             ORIGINAL: [
-                embed_orig.encode(title + sep_token(embed_orig) + abstract)
+                embed_orig.encode(title + "[SEP]" + abstract)
                 for title, abstract in zip(
                     examples["title"], examples["abstract"]
                 )
             ],
             FINE_TUNED: [
-                embed_ft.encode(title + sep_token(embed_ft) + abstract)
+                embed_ft.encode(title + "[SEP]" + abstract)
                 for title, abstract in zip(
                     examples["title"], examples["abstract"]
                 )
