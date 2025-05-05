@@ -69,7 +69,7 @@ if upload_dataset:
 
 ## Upload encoder
 if upload_model:
-    local_path = cfg.encoder["local_name"]
+    local_path = encoder_path(cfg.encoder["local_name"])
     remote_name = cfg.encoder["remote_name"]
     encoder = sentence_transformers.SentenceTransformer(local_path)
     encoder.push_to_hub(
