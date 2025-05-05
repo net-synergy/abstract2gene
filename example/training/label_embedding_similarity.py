@@ -31,16 +31,14 @@ import speakeasy2 as se2
 from sentence_transformers import SentenceTransformer
 
 import example._config as cfg
-from abstract2gene.data import encoder_path
 from abstract2gene.dataset import mutators
 
 EXPERIMENT = "label_embedding_similarity"
 seed = cfg.seeds[EXPERIMENT]
 FIGDIR = f"figures/{EXPERIMENT}"
 
-BEST_PRETRAINED = "SPECTER"
-ORIGINAL = "MPNet"
-FINE_TUNED = "MPNet-gene_and_disease-abstract2gene"
+ORIGINAL = cfg.encoder["base_model"]
+FINE_TUNED = f"{cfg.hf_user}/{cfg.encoder["remote_name"]}"
 
 if not os.path.exists(FIGDIR):
     os.makedirs(FIGDIR)
@@ -101,33 +99,45 @@ def correlate(features: np.ndarray) -> np.ndarray:
     return features @ features.T
 
 
-def plot(corr, symbols, ground_truth, name, title):
-    # Use a different width for square figures than the global config width.
-    fig_width = 0.7 * cfg.text_width
-
-    # This is left over from before but still used to convert the correlation
-    # matrix to an igraph for order_nodes. Could do this more directly.
-    graph = se2.knn_graph(corr, k=50)
-    ordering_gt = se2.order_nodes(graph, ground_truth)
-    norm = colors.Normalize(vmin=0, vmax=1)
-
-    fig, ax = plt.subplots(figsize=(fig_width, fig_width))
-    im = ax.imshow(corr[np.ix_(ordering_gt, ordering_gt)], norm=norm)
-
-    tick_pos = np.take(ground_truth.membership, ordering_gt)
-    tick_pos = [
-        int(np.median(np.where(tick_pos == i))) for i in range(n_labels)
-    ]
-
-    ax.set_xticks(
-        tick_pos, symbols, rotation=45, ha="right", rotation_mode="anchor"
+def plot(corrs, symbols, ground_truth, name):
+    labels = [chr(65 + i) + r". \emph{" + k + "}" for i, k in enumerate(corrs)]
+    fig, axes = plt.subplots(
+        1, 2, figsize=(cfg.fig_width, cfg.fig_width / 2.4)
     )
-    ax.set_yticks(tick_pos, symbols)
-    fig.colorbar(im, ax=ax, fraction=0.04, pad=0.04)
+
+    for label, ax, corr in zip(labels, axes, corrs.values()):
+        # This is left over from before but still used to convert the
+        # correlation matrix to an igraph for order_nodes. Could do this more
+        # directly.
+        graph = se2.knn_graph(corr, k=50)
+        ordering_gt = se2.order_nodes(graph, ground_truth)
+        norm = colors.Normalize(vmin=0, vmax=1)
+
+        im = ax.imshow(corr[np.ix_(ordering_gt, ordering_gt)], norm=norm)
+
+        tick_pos = np.take(ground_truth.membership, ordering_gt)
+        tick_pos = [
+            int(np.median(np.where(tick_pos == i)))
+            for i in range(len(symbols))
+        ]
+
+        ax.set_xticks(tick_pos, ["" for _ in symbols])
+        ax.set_facecolor("none")
+        ax.set_xlabel(label)
+
+    axes[0].set_yticks(tick_pos, symbols)
+    axes[1].set_yticks(tick_pos, ["" for _ in symbols])
 
     fig.patch.set_facecolor("none")
-    ax.set_facecolor("none")
-    plt.tight_layout(pad=0, rect=(0, 0, 1, 0.96))
+    plt.tight_layout(pad=0, rect=(0, 0, 1, 0.98))
+    fig.colorbar(
+        im,
+        ax=axes,
+        fraction=0.075,
+        pad=0.02,
+        shrink=1,
+        panchor=(0.9, 0.2),
+    )
 
     plt.savefig(os.path.join(FIGDIR, f"{name}.{cfg.figure_ext}"))
 
@@ -139,9 +149,8 @@ dataset = datasets.load_dataset(
 dataset = mutators.translate_to_human_orthologs(dataset, cfg.max_cpu)
 symbols = mutators.get_gene_symbols(dataset)
 
-pretrained_best = SentenceTransformer(cfg.MODELS[BEST_PRETRAINED])
 embed_orig = SentenceTransformer(cfg.MODELS[ORIGINAL])
-embed_ft = SentenceTransformer(encoder_path(FINE_TUNED))
+embed_ft = SentenceTransformer(FINE_TUNED)
 
 
 for k in [1, 5]:
@@ -151,12 +160,6 @@ for k in [1, 5]:
 
     ds_k = ds_k.map(
         lambda examples: {
-            BEST_PRETRAINED: [
-                pretrained_best.encode(title + "[SEP]" + abstract)
-                for title, abstract in zip(
-                    examples["title"], examples["abstract"]
-                )
-            ],
             ORIGINAL: [
                 embed_orig.encode(title + "[SEP]" + abstract)
                 for title, abstract in zip(
@@ -204,16 +207,20 @@ for k in [1, 5]:
     ground_truth = ig.clustering.Clustering(clusters[indices])
 
     ds_k = ds_k.select(samples).with_format(
-        "numpy", columns=[BEST_PRETRAINED, ORIGINAL, FINE_TUNED]
+        "numpy", columns=[ORIGINAL, FINE_TUNED]
     )
 
-    for feature in [BEST_PRETRAINED, ORIGINAL, FINE_TUNED]:
-        corr = correlate(ds_k[feature])
-        plot(
-            corr,
-            sym_k,
-            ground_truth,
-            f"{feature}_k{k}",
-            f"Similarity of {k}{'st' if k == 1 else 'th'} most prevalent"
-            + f" 15 genes with {feature} embeddings",
-        )
+    corrs = {
+        name: correlate(ds_k[feature])
+        for name, feature in [
+            ("Base model", ORIGINAL),
+            ("Fine-tuned model", FINE_TUNED),
+        ]
+    }
+
+    plot(
+        corrs,
+        sym_k,
+        ground_truth,
+        f"{ORIGINAL}_k{k}",
+    )
