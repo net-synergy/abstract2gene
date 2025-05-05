@@ -94,9 +94,9 @@ if "selected-embedding-model" in conf:
     encoder.update(_encoder)
 
 encoder["local_name"] = (
-    f"{encoder["base_model"]}_{encoder["fine_tuning"]}_abstract2gene"
+    f"{encoder["base_model"]}-{encoder["fine_tuning"]}-abstract2gene"
 )
-encoder["remote_name"] = f"{encoder["base_model"]}_abstract2gene"
+encoder["remote_name"] = f"{encoder["base_model"]}-abstract2gene"
 
 if "figures" in conf:
     _fig_conf = conf["figures"]

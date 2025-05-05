@@ -8,8 +8,10 @@ require coupling abstracts together.
 __ALL__ = ["dataset_generator"]
 
 import numpy as np
-import scipy as sp
 from datasets import Dataset, Features, Value
+
+from . import mutators
+from ._utils import lol_to_csc
 
 
 def dataset_generator(
@@ -18,6 +20,7 @@ def dataset_generator(
     max_labels: int = 10,
     batch_size: int = 32,
     n_batches: int = 100,
+    augment_label: float = 0,
     seed: int = 0,
     sep_token: str = "[SEP]",
 ) -> Dataset:
@@ -34,7 +37,13 @@ def dataset_generator(
     example without a label.
 
     """
-    labels = _lol_to_csc(dataset[label])
+    rng = np.random.default_rng(seed=seed)
+    if augment_label > 0:
+        dataset = mutators.augment_labels(
+            dataset, "gene", augment_label, rng.integers(0, 9999, (1,))[0]
+        )
+
+    labels = lol_to_csc(dataset[label])
 
     overlabeled = labels.sum(axis=1) > max_labels
     unlabeled = labels.sum(axis=1) == 0
@@ -55,7 +64,6 @@ def dataset_generator(
             + f" Lower batch size to less than {labels.shape[1]}"
         )
 
-    rng = np.random.default_rng(seed=seed)
     n_labels = labels.shape[1]
 
     anchors = []
@@ -85,20 +93,3 @@ def dataset_generator(
         {"anchor": anchors, "positive": positives, "negative": negatives},
         features=feats,
     )
-
-
-def _lol_to_csc(lists: list[list[int]]) -> sp.sparse.sparray:
-    nrows = len(lists)
-    ncols = max((col for ls in lists for col in ls)) + 1
-    numel = sum((len(ls) for ls in lists))
-    coords = np.zeros((2, numel))
-
-    count = 0
-    for i, ls in enumerate(lists):
-        for el in ls:
-            coords[:, count] = [i, el]
-            count += 1
-
-    return sp.sparse.coo_array(
-        (np.ones((numel,), dtype=np.bool), coords), shape=(nrows, ncols)
-    ).tocsc()

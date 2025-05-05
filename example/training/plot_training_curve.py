@@ -68,30 +68,42 @@ def _standardize_names(column: pd.Series) -> pd.Series:
     return column.apply(lambda x: x.replace("_", " ").title())
 
 
-def plot(df):
-    df["experiment"] = _standardize_names(df["experiment"])
-    df["eval_type"] = _standardize_names(df["eval_type"])
+def _preprocess(df):
+    df.loc[:, "experiment"] = _standardize_names(df["experiment"])
+    df.loc[:, "eval_type"] = _standardize_names(df["eval_type"])
+
+    if len(df.experiment.unique()) > 1:
+        unmasked = df[
+            np.logical_and(
+                df.experiment == "Unmasked", df.eval_type == "Unmasked"
+            )
+        ]
+        x_lim = min(
+            [
+                unmasked.loc[unmasked["model"] == model, "step"].max()
+                for model in unmasked.model.unique()
+            ]
+        )
+        df = df[df["step"] <= x_lim]
+
+    experiments = df.sort_values("time").experiment.unique()
+    cat_type = CategoricalDtype(categories=experiments, ordered=True)
+    df.loc[:, "experiment"] = df["experiment"].astype(cat_type)
+
+    return df
+
+
+def plot_training_strategies(df):
+    df = _preprocess(df)
 
     gene_and_disease_name = r"\noindent{}Genes And\\Disease Masked"
     df.loc[df["eval_type"] == "Genes And Disease Masked", "eval_type"] = (
         gene_and_disease_name
     )
 
-    x_lim = min(
-        [
-            accuracy.loc[accuracy["model"] == model, "step"].max()
-            for model in accuracy.model.unique()
-        ]
-    )
-    df = df[df["step"] <= x_lim]
-
     eval_types = ["Unmasked", "Genes Masked", gene_and_disease_name]
     cat_type = CategoricalDtype(categories=eval_types, ordered=True)
     df["eval_type"] = df["eval_type"].astype(cat_type)
-
-    experiments = df.sort_values("time").experiment.unique()
-    cat_type = CategoricalDtype(categories=experiments, ordered=True)
-    df["experiment"] = df["experiment"].astype(cat_type)
 
     diff_positions = {
         "step": [6750, 7500, 8250, 9000, 9750],
@@ -183,6 +195,28 @@ def plot(df):
     )
 
 
+def plot_all_models(df):
+    df = df[df["experiment"] == "permute"]
+    df = df[df["eval_type"] != "genes_masked"]
+    df = _preprocess(df)
+
+    eval_types = sorted(df.eval_type.unique(), reverse=True)
+    cat_type = CategoricalDtype(categories=eval_types, ordered=True)
+    df["eval_type"] = df["eval_type"].astype(cat_type)
+
+    return (
+        p9.ggplot(df, p9.aes(x="step", y="value", color="model"))
+        + p9.geom_smooth(method="loess", se=False, size=0.5)
+        + p9.geom_point(size=1)
+        + p9.scale_color_discrete()
+        + p9.labs(x="Step", y="Accuracy", color="Model")
+        + p9.theme(
+            text=p9.element_text(family=cfg.font_family, size=cfg.font_size),
+        )
+        + p9.facet_wrap("eval_type", ncol=1)
+    )
+
+
 logs = os.listdir("logs")
 models = [
     model
@@ -206,9 +240,18 @@ accuracy = pd.concat(
     ignore_index=True,
 )
 
-p = plot(accuracy)
+p = plot_training_strategies(
+    accuracy[np.isin(accuracy.model, ("MPNet", "PubMedNCL"))]
+)
 p.save(
-    os.path.join(FIGDIR, f"training_curve.{cfg.figure_ext}"),
+    os.path.join(FIGDIR, f"training_strategies.{cfg.figure_ext}"),
+    width=cfg.fig_width,
+    height=cfg.fig_height * 2,
+)
+
+p = plot_all_models(accuracy)
+p.save(
+    os.path.join(FIGDIR, f"training_curves.{cfg.figure_ext}"),
     width=cfg.fig_width,
     height=cfg.fig_height * 2,
 )

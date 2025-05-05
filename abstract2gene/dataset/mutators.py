@@ -13,9 +13,12 @@ __all__ = [
     "translate_to_human_orthologs",
     "mask_abstract",
     "attach_references",
+    "augment_labels",
 ]
 
+import json
 import os
+from collections import defaultdict
 from typing import Any, Sequence
 
 import datasets
@@ -26,6 +29,8 @@ import pubmedparser.ftp
 from tqdm import tqdm
 
 from abstract2gene.data import PubmedDownloader, default_cache_dir
+
+from ._utils import lol_to_csc
 
 
 def attach_pubmed_genes(
@@ -420,3 +425,162 @@ def attach_references(
         fn_kwargs={"table": table},
         desc="Attaching references",
     )
+
+
+def _calculate_augmented_labels(label: str, fpath: str):
+    import jax
+    from scipy.stats import binom
+
+    def sorted_isin(el, arr) -> np.bool_:
+        idx = np.searchsorted(arr, el)
+        return arr[idx] == el
+
+    def build_behavioral_mask(
+        references: list[list[int]],
+    ) -> list[list[np.bool_]]:
+        refs, treedef = jax.tree.flatten(references)
+        mask = np.isin(refs, unlabeled_pmids)
+
+        return jax.tree.unflatten(treedef, mask)
+
+    def filter_to_behavioral(
+        example: dict[str, Any],
+        index: int,
+        behavioral_mask: list[list[np.bool_]],
+    ) -> dict[str, Any]:
+        idx = np.arange(len(example["reference"]))[behavioral_mask[index]]
+
+        return {"reference": np.take(example["reference"], idx)}
+
+    dataset = datasets.load_dataset("dconnell/pubtator3_abstracts")["train"]
+    annotated_pubs = dataset.filter(
+        lambda example: len(example["reference"]) > 0
+        and len(example[label]) > 0,
+        num_proc=60,
+    )
+
+    # Restructuring dataset is slow when large. Saves time by doing it once.
+    references = annotated_pubs["reference"]
+
+    uniq_refs = np.unique_values(
+        [ref for ref_list in references for ref in ref_list]
+    )
+
+    unlabeled_pubs = dataset.filter(
+        lambda example: len(example[label]) == 0
+        and sorted_isin(example["pmid"], uniq_refs),
+        num_proc=60,
+    )
+
+    unlabeled_pmids = np.unique_values(unlabeled_pubs["pmid"])
+    unlabeled_mask = build_behavioral_mask(references)
+
+    annotated_pubs = annotated_pubs.map(
+        filter_to_behavioral,
+        with_indices=True,
+        fn_kwargs={"behavioral_mask": unlabeled_mask},
+    ).filter(lambda example: len(example["reference"]) > 0)
+
+    cited_by = lol_to_csc(annotated_pubs["reference"])
+    cited_by = cited_by[:, unlabeled_pmids]
+
+    mask = cited_by.sum(axis=0) > 2
+    unlabeled_pmids = np.take(
+        unlabeled_pmids, np.arange(cited_by.shape[1])[mask]
+    )
+    cited_by = cited_by[:, mask]
+
+    mask = cited_by.sum(axis=1) > 0
+    cited_by = cited_by[mask, :]
+    cited_by = cited_by.astype(int)
+
+    if label == "gene":
+        annotated_pubs = translate_to_human_orthologs(
+            annotated_pubs, max_cpu=60
+        )
+
+    annotations = lol_to_csc(annotated_pubs["gene"])
+    annotations = annotations[mask, :]
+    annotations = annotations.astype(int)
+
+    probs = annotations.mean(axis=0)
+    events = cited_by.T @ annotations
+    n = cited_by.sum(axis=0)
+    thresh = 0.05 / np.prod(events.shape)
+
+    augmented_anns: dict[int, list[int]] = defaultdict(list)
+    for ann in range(events.shape[1]):
+        pubs, _ = events[:, [ann]].nonzero()
+
+        # -1 because we want probability of observing at least this many events
+        # as opposed to more than this many events.
+        unexpected = (
+            binom.sf(events[pubs, ann].toarray() - 1, n[pubs], probs[ann])
+            < thresh
+        )
+
+        for pub_idx in pubs[unexpected]:
+            augmented_anns[int(unlabeled_pmids[pub_idx])].append(ann)
+
+    with open(fpath, "w") as js:
+        json.dump(augmented_anns, js)
+
+
+def augment_labels(
+    dataset: datasets.Dataset, label: str, prop: float, seed: int
+):
+    """Augment a dataset with inferred labels.
+
+    Uses the citation network to infer annotations for publications that were
+    not given any.
+
+    Attempts to enrich unlabeled publication so that the final proportion of
+    labeled publications is `prop` augmented and `1 - prop` PubTator3 labels.
+    """
+
+    def searchsorted(arr, val) -> int:
+        idx = np.searchsorted(arr, val)
+        if idx == len(arr) or arr[idx] != val:
+            return -1
+
+        return int(idx)
+
+    rng = np.random.default_rng(seed)
+    fpath = os.path.join(default_cache_dir(), f"{label}_augmented_labels.json")
+    if not os.path.exists(fpath):
+        print(
+            "Augmented labels not cached; calculating. This may take a while."
+        )
+        _calculate_augmented_labels(label, fpath)
+
+    with open(fpath, "r") as js:
+        augmented_labels = json.load(js)
+
+    annotated_pubs = dataset.filter(lambda example: len(example[label]) > 0)
+    n_annotated = len(annotated_pubs)
+    n_augmented = int((n_annotated * prop) / (1 - prop))
+
+    mixin_pmids = rng.permuted(list(augmented_labels.keys()))
+    ds_pmids = np.asarray(dataset["pmid"])
+    indices = np.arange(len(ds_pmids))
+    shuff = np.argsort(ds_pmids)
+    indices = indices[shuff]
+    ds_pmids = ds_pmids[shuff]
+
+    count = 0
+    for pmid in mixin_pmids:
+        if count >= n_augmented:
+            break
+
+        idx = searchsorted(ds_pmids, int(pmid))
+        if idx > 0:
+            count += 1
+            dataset[idx][label] = augmented_labels[pmid]
+
+    if count < n_augmented:
+        print(
+            "Did not find enough augmented labels. Dataset enriched with "
+            + f"{100 * (count / (count + n_annotated))}% augmented labels."
+        )
+
+    return dataset

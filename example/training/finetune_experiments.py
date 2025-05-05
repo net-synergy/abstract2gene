@@ -110,7 +110,7 @@ def finetune(
     if continue_training and os.path.exists(save_path):
         model = SentenceTransformer(save_path)
     else:
-        if not os.path.exists(save_path):
+        if continue_training and (not os.path.exists(save_path)):
             print("Model has no previous save starting from base model.")
 
         model = SentenceTransformer(cfg.models[model_name])
@@ -197,7 +197,6 @@ if __name__ == "__main__":
     experiments = [1, 2, 3, 5]
     n_steps = 10_000
     n_test_steps = 100
-    continue_train = False
 
     parser = argparse.ArgumentParser()
     parser.add_argument(
@@ -230,6 +229,9 @@ if __name__ == "__main__":
             + "the base model."
         ),
     )
+    parser.add_argument(
+        "--seed", default=-1, type=int, help="The random seed."
+    )
 
     args = parser.parse_args()
     n_steps = args.n_steps
@@ -237,6 +239,10 @@ if __name__ == "__main__":
     models = args.models
     experiments = args.experiments
     continue_training = args.continue_training
+    augment_labels = 0.2
+
+    if args.seed >= 0:
+        seed_generator = make_seed_generator(args.seed)
 
     for model in models:
         if model not in list(hyperparams.keys()):
@@ -262,6 +268,7 @@ if __name__ == "__main__":
                 n_batches=n_test_steps,
                 mask=None,
                 labels="gene",
+                augment_label=augment_labels,
                 seed_generator=seed_generator,
             )["gene"],
             "genes_masked": load_dataset(
@@ -270,6 +277,7 @@ if __name__ == "__main__":
                 n_batches=n_test_steps,
                 mask="gene",
                 labels="gene",
+                augment_label=augment_labels,
                 seed_generator=seed_generator,
             )["gene"],
             "genes_and_disease_masked": load_dataset(
@@ -278,6 +286,7 @@ if __name__ == "__main__":
                 n_batches=n_test_steps,
                 mask=["gene", "disease"],
                 labels="gene",
+                augment_label=augment_labels,
                 seed_generator=seed_generator,
             )["gene"],
         }
@@ -290,6 +299,7 @@ if __name__ == "__main__":
                 n_batches=n_steps,
                 mask=None,
                 labels="gene",
+                augment_label=augment_labels,
                 seed_generator=seed_generator,
             )["gene"]
 
@@ -314,6 +324,7 @@ if __name__ == "__main__":
                 n_batches=n_steps,
                 mask="gene",
                 labels="gene",
+                augment_label=augment_labels,
                 seed_generator=seed_generator,
             )["gene"]
 
@@ -338,6 +349,7 @@ if __name__ == "__main__":
                 n_batches=n_steps,
                 mask=["gene", "disease"],
                 labels="gene",
+                augment_label=augment_labels,
                 seed_generator=seed_generator,
             )["gene"]
 
@@ -362,6 +374,7 @@ if __name__ == "__main__":
                 n_batches=n_steps // 3,
                 mask=["gene", "disease"],
                 labels=["gene", "disease"],
+                augment_label=augment_labels,
                 seed_generator=seed_generator,
             )
 
@@ -391,6 +404,7 @@ if __name__ == "__main__":
                 mask=["gene", "disease"],
                 permute_prob=0.25,
                 labels="gene",
+                augment_label=augment_labels,
                 seed_generator=seed_generator,
             )["gene"]
 
