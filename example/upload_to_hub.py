@@ -2,6 +2,9 @@
 
 Requires being logged in as the Hugging Face user set in the config. If not set
 this is "dconnell".
+
+By default, uploads both the dataset and model. If `--upload_dataset` or
+`--upload_model` is passed, upload only the dataset or model.
 """
 
 import argparse
@@ -34,6 +37,10 @@ if __name__ == "__main__":
     upload_dataset = args.upload_dataset
     upload_model = args.upload_model
 
+if not (upload_dataset or upload_model):
+    # Case when neither flag passed
+    upload_dataset = True
+    upload_model = True
 
 ## Upload dataset
 if upload_dataset:
