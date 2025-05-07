@@ -92,7 +92,7 @@ while len(random_behavioral_study) < len(selected_references):
     ):
         random_behavioral_study.append(ref)
 
-model = a2g.model.load_from_disk("a2g_768dim_per_batch_2")
+model = a2g.model.load_from_disk("abstract2gene_lpb_2")
 inputs = [
     [
         dataset[ref]["title"] + "[SEP]" + dataset[ref]["abstract"]
@@ -103,7 +103,7 @@ inputs = [
     )
 ]
 
-for name in [f"a2g_768dim_per_batch_{2**n}" for n in range(1, 7)]:
+for name in [f"abstract2gene_lpb_{2**n}" for n in range(1, 9)]:
     model = a2g.model.load_from_disk(name)
     probabilities = [
         np.array(model.predict(abstracts)) for abstracts in inputs

@@ -1,5 +1,4 @@
 import os
-import sys
 
 import datasets
 import numpy as np
@@ -13,7 +12,7 @@ import example._config as cfg
 EXPERIMENT = "reference_similarity"
 N_PUBLICATIONS = 10
 FIGDIR = f"figures/{EXPERIMENT}"
-MODEL = "a2g_768dim_per_batch_4"
+MODEL = "abstract2gene_lpb_16"
 k = 5
 
 seed = cfg.seeds[EXPERIMENT]

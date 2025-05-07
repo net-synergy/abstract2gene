@@ -174,7 +174,7 @@ def organize_predictions(
 
 
 # Need to load up any model to get the template indices.
-model = a2g.model.load_from_disk("a2g_768dim_per_batch_2")
+model = a2g.model.load_from_disk("abstract2gene_lpb_2")
 label_indices = model.sync_indices(dataset)
 
 de_dataset2model = [
@@ -233,9 +233,9 @@ for k, ds in ds_typed.items():
             )
         ]
 
-    for n in range(1, 7):
+    for n in range(1, 9):
         lpb = 2**n
-        name = f"a2g_768dim_per_batch_{lpb}"
+        name = f"abstract2gene_lpb_{lpb}"
         model = a2g.model.load_from_disk(name)
 
         model_predictions.append(
