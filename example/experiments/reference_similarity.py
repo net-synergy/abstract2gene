@@ -107,7 +107,7 @@ p = (
     )
     + p9.geom_bar()
     + p9.coord_flip()
-    + p9.labs(x="Count", y="Cluster", color="Cited by", fill="Cited by")
+    + p9.labs(x="Cluster", y="Count", color="Cited by", fill="Cited by")
     + p9.theme(
         text=p9.element_text(family=cfg.font_family, size=cfg.font_size),
     )
@@ -127,8 +127,8 @@ p = (
     + p9.geom_bar()
     + p9.coord_flip()
     + p9.labs(
-        x="Count",
-        y="Cluster",
+        x="Cluster",
+        y="Count",
         color="Cited by",
         fill="Cited by",
         # Otherwise "Type" gets cutoff for some reason.

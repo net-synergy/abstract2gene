@@ -111,28 +111,25 @@ for name in [f"abstract2gene_lpb_{2**n}" for n in range(1, 9)]:
     parent = np.hstack([[i, i, i] for i in range(len(inputs))])
     group = np.hstack(
         [
-            ["behavioral_reference", "molecular_reference", "random"]
+            ["Behavioral Reference", "Molecular Reference", "Random"]
             for i in range(len(inputs))
         ]
     )
     corr = np.hstack(
         [
             [
-                (ref_set[0, :] @ ref_set[1, :]) /
-                # / (ref_set[0, :] @ ref_set[0, :]),
-                (
+                (ref_set[0, :] @ ref_set[1, :])
+                / (
                     np.linalg.norm(ref_set[0, :])
                     * np.linalg.norm(ref_set[1, :])
                 ),
-                (ref_set[0, :] @ ref_set[2, :]) /
-                # / (ref_set[0, :] @ ref_set[0, :]),
-                (
+                (ref_set[0, :] @ ref_set[2, :])
+                / (
                     np.linalg.norm(ref_set[0, :])
                     * np.linalg.norm(ref_set[2, :])
                 ),
-                (ref_set[0, :] @ ref_set[3, :]) /
-                # / (ref_set[0, :] @ ref_set[0, :]),
-                (
+                (ref_set[0, :] @ ref_set[3, :])
+                / (
                     np.linalg.norm(ref_set[0, :])
                     * np.linalg.norm(ref_set[3, :])
                 ),
@@ -195,7 +192,7 @@ for name in [f"abstract2gene_lpb_{2**n}" for n in range(1, 9)]:
             "parent_prob": selected_probabilities[:, 0].repeat(3),
             "reference_prob": selected_probabilities[:, 1:].reshape((-1,)),
             "group": (
-                ["behavioral", "molecular", "random"]
+                ["Behavioral", "Molecular", "Random"]
                 * selected_probabilities.shape[0]
             ),
         }
