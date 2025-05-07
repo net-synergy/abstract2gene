@@ -33,7 +33,7 @@ async def init_db(
     if model.templates is None:
         raise RuntimeError("Templates not attached to this model.")
 
-    n_genes = model.templates.indices.shape[0]
+    n_genes = model.templates.names.shape[0]
     await client.create_collection(
         collection_name=collection_name,
         vectors_config=VectorParams(

@@ -44,15 +44,16 @@ async def main():
         f"{cfg.hf_user}/pubtator3_abstracts", data_files=data_files
     )["train"]
 
+    dataset = a2g.dataset.mutators.translate_to_human_orthologs(dataset)
     genes = {
         "symbol": a2g.dataset.mutators.get_gene_symbols(dataset),
         "entrez_id": dataset.features["gene"].feature.names,
     }
 
     if model.templates:
+        indices = model.sync_indices(dataset)
         genes = {
-            k: [v[i] for i in model.templates.indices]
-            for k, v in genes.items()
+            k: [v[int(i)] for i in indices if i > 0] for k, v in genes.items()
         }
 
     with open(

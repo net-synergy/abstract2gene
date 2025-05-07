@@ -12,6 +12,7 @@ import json
 import os
 import re
 
+import datasets
 import jax
 import jax.numpy as jnp
 import numpy as np
@@ -34,7 +35,8 @@ class Templates:
     parameters causes an error when jax.flatten is run.
     """
 
-    indices: np.ndarray
+    label: str
+    names: np.ndarray
     values: jax.Array
 
 
@@ -93,13 +95,45 @@ class Model(nnx.Module):
         if self.templates is not None:
             print("Templates already attached. Old templates being replaced.")
 
-        templates, indices = dataset.get_templates(template_size)
+        label = dataset.label
+        templates, names = dataset.get_templates(template_size)
         templates = self(templates)
         templates = dataset.fold_templates(templates, template_size).mean(
             axis=1
         )
 
-        self.templates = Templates(indices=indices, values=templates)
+        self.templates = Templates(names=names, values=templates, label=label)
+
+    def sync_indices(self, dataset: datasets.Dataset) -> np.ndarray:
+        """Generate indices associating template columns with label names.
+
+        For each column in templates, find the index (`int`) in dataset that
+        represents that name such that
+        dataset.features[label].feature.int2str(int) returns the name again.
+
+        If a name is in the template but not the dataset, that column will get
+        a negative label index.
+        """
+        if not self.templates:
+            raise ValueError("No templates have been attached.")
+
+        temp_names = self.templates.names
+        ds_feats = dataset.features[self.templates.label].feature
+        ds_names = np.sort(ds_feats.names)
+        name2index = ds_feats.str2int
+
+        in_dataset = np.isin(temp_names, ds_names)
+        missing_count = 0
+
+        indices = np.zeros(temp_names.shape[0])
+        for i in range(temp_names.shape[0]):
+            if in_dataset[i]:
+                indices[i] = name2index(temp_names[i])
+            else:
+                missing_count -= 1
+                indices[i] = missing_count
+
+        return indices
 
     def attach_encoder(self, name: str) -> None:
         """Attach a sentence-transformer encoder.
@@ -185,15 +219,16 @@ class Model(nnx.Module):
 
         metadata["encoder"] = self._encoder_name
 
-        with open(os.path.join(save_dir, "metadata.json"), "w") as js:
-            json.dump(metadata, js)
-
         if self.templates is not None:
+            metadata["label_type"] = self.templates.label
             np.savez_compressed(
                 os.path.join(save_dir, "templates.npz"),
                 templates=np.asarray(self.templates.values),
-                label_indices=self.templates.indices,
+                label_names=self.templates.names,
             )
+
+        with open(os.path.join(save_dir, "metadata.json"), "w") as js:
+            json.dump(metadata, js)
 
         _, state = nnx.split(self)
 
@@ -216,6 +251,8 @@ def load_from_disk(name: str) -> Model:
 
     cls_name = metadata.pop("cls_name")
     encoder_name = metadata.pop("encoder")
+    if "label_type" in metadata:
+        label = metadata.pop("label_type")
 
     abstract_model = nnx.eval_shape(lambda: model_cls[cls_name](**metadata))
     graphdef, abstract_state = nnx.split(abstract_model)
@@ -231,9 +268,11 @@ def load_from_disk(name: str) -> Model:
     if os.path.exists(os.path.join(save_dir, "templates.npz")):
         with np.load(os.path.join(save_dir, "templates.npz")) as data:
             templates = data["templates"]
-            label_indices = data["label_indices"]
+            label_names = data["label_names"]
 
-        model.templates = Templates(indices=label_indices, values=templates)
+        model.templates = Templates(
+            names=label_names, values=templates, label=label
+        )
 
     return model
 

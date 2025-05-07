@@ -93,12 +93,13 @@ def plot(df: pd.DataFrame, filename: str | None = None, x_name: str = "Gene"):
 
 model_results: dict[str, pd.DataFrame] = {}
 for name in [f"a2g_768dim_per_batch_{2**n}" for n in range(1, 7)]:
-    model = a2g.model.load_from_disk(name)
-    dataset = datasets.load_dataset(
-        f"{cfg.hf_user}/pubtator3_abstracts", data_files=cfg.TEST_FILES
-    )["train"]
+dataset = datasets.load_dataset(
+    f"{cfg.hf_user}/pubtator3_abstracts", data_files=cfg.TEST_FILES
+)["train"]
+dataset = mutators.translate_to_human_orthologs(dataset, cfg.max_cpu)
+symbols = mutators.get_gene_symbols(dataset)
 
-    symbols = mutators.get_gene_symbols(dataset)
+    model = a2g.model.load_from_disk(name)
     df = a2g.model.test(
         model, dataset, "gene", symbols=symbols, n_samples=30_000
     )

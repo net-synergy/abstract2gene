@@ -165,12 +165,13 @@ def test(
 
         Uses the template indices to sync with output templates.
         """
-        return np.isin(model.templates.indices, labels)  # type: ignore[arg-type]
+        return np.isin(label_indices[label_indices >= 0], labels)
 
     if model.templates is None:
         raise ValueError("Templates most be attached to model before testing.")
 
     model.eval()
+    label_indices = model.sync_indices(dataset)
 
     rng = np.random.default_rng(seed=seed)
 
@@ -231,9 +232,7 @@ def test(
     labels = labels[:, label_mask].astype(np.bool)
     regression = regression[:, label_mask]
     symbols = symbols or dataset.features[label_name].feature.names
-    symbols = [
-        symbols[idx] for idx in model.templates.indices[label_mask]
-    ]  # type: ignore[union-attr]
+    symbols = [symbols[int(idx)] for idx in label_indices[label_mask]]
 
     selected = rng.choice(labels.shape[1], n_labels)
 

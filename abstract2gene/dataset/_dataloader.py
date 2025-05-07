@@ -27,7 +27,9 @@ class DataLoaderDict(UserDict):
     def __init__(
         self,
         mapping: dict[str, DataLoader],
+        label: str,
         rng: np.random.Generator,
+        label_names: np.ndarray,
         batch_size: int = 64,
         template_size: int = 32,
         labels_per_batch: int = -1,
@@ -41,6 +43,8 @@ class DataLoaderDict(UserDict):
             The dictionary of DataLoaders to handle.
         rng : numpy random generator
             A random generator.
+        label_names : ndarray
+            Names for the labels.
         batch_size : int, default 64
             How many samples should make up a batch.
         template_size : int, default 32
@@ -60,10 +64,12 @@ class DataLoaderDict(UserDict):
 
         """
         super().__init__(mapping)
+        self.label = label
         self._rng = rng
         self._batch_size = batch_size
         self._template_size = template_size
         self.labels_per_batch = labels_per_batch
+        self._label_names = label_names
         self.update_params()
         self.n_features = mapping[list(mapping.keys())[0]].n_features
         self.n_samples = mapping[list(mapping.keys())[0]].n_samples
@@ -124,6 +130,9 @@ class DataLoaderDict(UserDict):
     def select(self, indices: Sequence[int]) -> DataLoaderDict:
         return DataLoaderDict(
             {k: v[indices] for k, v in self.data.items()},
+            rng=self._rng,
+            label=self.label,
+            label_names=self._label_names,
             batch_size=self.batch_size,
             template_size=self.template_size,
             labels_per_batch=self.labels_per_batch,
@@ -167,12 +176,12 @@ class DataLoaderDict(UserDict):
             A 2d Array of size (n_templates x template_size) x n_features. The
             number of templates is a function of the number of labels with at
             least template_size samples.
-        label_indices : np.ndarray
-            A list of the label indices associated with each template in
+        label_names : np.ndarray
+            A list of the label names associated with each template in
             template_samples. This (and by extension template_samples) will be
             sorted in ascending order. If there's enough samples for each label
             this will be 0--n_labels. (Useful for associated with a HuggingFace
-            dataset using the same indices as this loader's data.)
+            dataset or another data source with the same names.)
 
         See Also
         --------
@@ -195,6 +204,7 @@ class DataLoaderDict(UserDict):
         mask = labels.sum(axis=0) > template_size
         labels = labels[:, mask].toarray()
         indices = indices[mask]
+        names = self._label_names[indices]
 
         rows = np.arange(labels.shape[0])
         templates = np.vstack(
@@ -205,7 +215,7 @@ class DataLoaderDict(UserDict):
             dtype=samples.dtype,
         )
 
-        return (jnp.asarray(templates), indices)
+        return (jnp.asarray(templates), names)
 
     def split_batch(
         self, batch: Samples, template_size: int | None = None
@@ -511,7 +521,7 @@ def from_huggingface(
         The dataset to convert.
     samples : str, default "embedding"
         The name of the dataset feature to use as samples.
-    labels : str, default "gene2pubtator"
+    labels : str, default "gene"
         The name of the dataset feature to use as labels. This should have the
         dataset.Feature type dataset.ClassLabel. This will be used for both
         label values and their symbols. In addition to "gene2pubtator",
@@ -584,6 +594,7 @@ def from_huggingface(
     rng: np.random.Generator = np.random.default_rng(seed)
     new_seed = rng.integers(9999, size=len(split)).astype(int)
     splabels = to_sparse_labels(dataset, labels)
+    label_names = np.asarray(dataset.features[labels].feature.names)
     label_masks = split_labels(splabels, split, rng)
     feats = dataset.with_format("numpy", columns=[samples])[samples]
 
@@ -609,6 +620,8 @@ def from_huggingface(
             )
             for sd, k in zip(new_seed, split)
         },
+        label=labels,
+        label_names=label_names,
         rng=rng,
         **kwds,
     )

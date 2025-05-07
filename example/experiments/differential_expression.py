@@ -47,6 +47,7 @@ dataset = datasets.load_dataset(
     f"{cfg.hf_user}/pubtator3_abstracts",
     data_files=cfg.AD_DE_FILES,
 )["train"]
+dataset = mutators.translate_to_human_orthologs(dataset, cfg.max_cpu)
 
 ds_typed = {
     "molecular": dataset.filter(lambda example: len(example["gene"]) > 0),
@@ -174,15 +175,14 @@ def organize_predictions(
 
 # Need to load up any model to get the template indices.
 model = a2g.model.load_from_disk("a2g_768dim_per_batch_2")
+label_indices = model.sync_indices(dataset)
 
 de_dataset2model = [
     (
         i,
-        de_idx[
-            np.arange(len(de_idx))[model.templates.indices[i] == de_idx][0]
-        ],
+        de_idx[np.arange(len(de_idx))[label_indices[i] == de_idx][0]],
     )
-    for i, tf in enumerate(np.isin(model.templates.indices, de_idx))
+    for i, tf in enumerate(np.isin(label_indices, de_idx))
     if tf
 ]
 

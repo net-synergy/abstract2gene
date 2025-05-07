@@ -192,7 +192,7 @@ def translate_to_human_orthologs(
     def is_human(gene_id: int | np.int_) -> np.bool_:
         idx = np.searchsorted(human_genes, gene_id)
 
-        return (idx < len(human_genes)) and (human_genes.iloc[idx] == gene_id)
+        return (idx <= len(human_genes)) and (human_genes.iloc[idx] == gene_id)
 
     def retrieve_human_ortholog(gene_id: int | np.int_) -> int | None:
         if is_human(gene_id):
@@ -217,8 +217,8 @@ def translate_to_human_orthologs(
             ]
         }
 
-    def idx2gene(gene_id: int) -> int:
-        return old_genes[gene_id]
+    def idx2gene(gene_idx: int) -> int:
+        return old_genes[gene_idx]
 
     def gene2idx(gene: int) -> np.int_:
         return np.searchsorted(new_genes, gene)
