@@ -21,7 +21,7 @@ if not os.path.exists(FIGDIR):
     os.makedirs(FIGDIR)
 
 model = a2g.model.load_from_disk(MODEL)
-dataset = datasets.load_dataset("dconnell/pubtator3_abstracts")["train"]
+dataset = datasets.load_dataset(f"{cfg.hf_user}/pubtator3_abstracts")["train"]
 
 rng = np.random.default_rng(seed=seed)
 parent_publications = [
