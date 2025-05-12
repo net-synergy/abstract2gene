@@ -44,15 +44,22 @@ log(f"    {len(dataset.features["gene"].feature.names)} unique genes")
 log(f"    {len([g for gs in dataset["gene"] for g in gs])} total genes")
 log("")
 
+dataset = mutators.augment_labels(dataset, "gene", 0.2, seed)
+
 genes = np.bincount(jax.tree.leaves(dataset["gene"]))
-mask = genes > cfg.template_size
-gene_ids = np.arange(len(genes))[mask]
+mask = genes >= 8
+gene_idx = np.arange(len(genes))[mask]
+
+old_gene_feats = dataset.features["gene"].feature
 
 dataset = dataset.filter(
-    lambda example: any(np.isin(example["gene"], gene_ids)),
-    num_proc=10,
+    lambda example: any(np.isin(example["gene"], gene_idx)),
+    num_proc=cfg.max_cpu,
 )
-dataset = mutators.mask_abstract(dataset, "gene").map(
+
+dataset = mutators.mask_abstract(
+    dataset, "gene", permute_prob=0.25, max_cpu=cfg.max_cpu, seed=seed + 1
+).map(
     lambda example: {
         "embedding": encoder.encode(
             example["title"] + "[SEP]" + example["abstract"]
@@ -63,7 +70,7 @@ dataset = mutators.mask_abstract(dataset, "gene").map(
 
 dataloader, _ = a2g.dataset.from_huggingface(
     dataset,
-    seed=seed,
+    seed=seed + 2,
     labels="gene",
     batch_size=128,
     labels_per_batch=8,
@@ -72,20 +79,23 @@ dataloader, _ = a2g.dataset.from_huggingface(
 )
 
 dims = (dataloader.n_features, 768)
-for n in range(1, 7):
+for n in range(1, 9):
     dataloader.reset_rngs()
-    model = a2g.model.MultiLayer(seed=seed + 1, dims=dims)
+    model = a2g.model.MultiLayer(seed=seed + 3, dims=dims)
     tx = optax.adam(learning_rate=1e-4)
     trainer = a2g.model.Trainer(model, dataloader, tx)
 
     trainer.data.update_params(labels_per_batch=2**n, template_size=1)
-    results = trainer.train(max_epochs=40)
+    results = trainer.train(max_epochs=20)
 
     trainer.data.update_params(template_size=4)
-    results = trainer.train(max_epochs=20)
+    results = trainer.train(max_epochs=10)
 
     trainer.data.update_params(template_size=8)
-    results = trainer.train(max_epochs=20)
+    results = trainer.train(max_epochs=10)
+
+    trainer.data.update_params(template_size=cfg.template_size)
+    results = trainer.train(max_epochs=10)
 
     model.attach_encoder(encoder_loc)
     model.attach_templates(dataloader, template_size=cfg.template_size)
