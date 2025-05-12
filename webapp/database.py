@@ -61,7 +61,7 @@ async def store_publications(
         desc="Predicting genes",
     )
 
-    batch_size = 500
+    batch_size = 200
     for i in tqdm(range(0, len(dataset), batch_size)):
         fin = min(i + batch_size, len(dataset))
         points = [
