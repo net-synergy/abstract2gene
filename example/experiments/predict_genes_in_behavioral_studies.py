@@ -6,13 +6,12 @@ that abstract2gene is able to pick out.
 """
 
 import os
-import sys
 
 import datasets
-import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 import plotnine as p9
+from pandas.api.types import CategoricalDtype
 
 import abstract2gene as a2g
 import example._config as cfg
@@ -103,7 +102,12 @@ inputs = [
     )
 ]
 
-for name in [f"abstract2gene_lpb_{2**n}" for n in range(1, 9)]:
+model_corrs = pd.DataFrame(
+    {"model": [], "parent": [], "group": [], "correlation": []}
+)
+for n in range(1, 9):
+    lpb = 2**n
+    name = f"abstract2gene_lpb_{lpb}"
     model = a2g.model.load_from_disk(name)
     probabilities = [
         np.array(model.predict(abstracts)) for abstracts in inputs
@@ -139,11 +143,19 @@ for name in [f"abstract2gene_lpb_{2**n}" for n in range(1, 9)]:
     )
 
     corrs = pd.DataFrame(
-        {"parent": parent, "group": group, "correlation": corr}
+        {
+            "model": [str(lpb) for _ in range(len(parent))],
+            "parent": parent,
+            "group": group,
+            "correlation": corr,
+        }
     )
+    model_corrs = pd.concat((model_corrs, corrs), ignore_index=True)
 
     summary = (
-        corrs.drop(columns=["parent"]).groupby("group").agg(["mean", "std"])
+        corrs.drop(columns=["model", "parent"])
+        .groupby("group")
+        .agg(["mean", "std"])
     )
     summary.columns = [col for _, col in summary.columns]
     summary = summary.reset_index()
@@ -218,3 +230,79 @@ for name in [f"abstract2gene_lpb_{2**n}" for n in range(1, 9)]:
         width=cfg.fig_width,
         height=cfg.fig_height,
     )
+
+
+def plot(df: pd.DataFrame, filename: str | None = None):
+    from plotnine import (
+        aes,
+        element_text,
+        geom_errorbar,
+        geom_point,
+        ggplot,
+        labs,
+        position_dodge,
+        position_jitterdodge,
+        theme,
+        ylim,
+    )
+
+    def stderr(x):
+        return np.std(x) / np.sqrt(x.shape[0])
+
+    summary = (
+        df.drop(columns=["parent"])
+        .groupby(["model", "group"], as_index=False)["correlation"]
+        .agg(["mean", "std", stderr])
+    )
+
+    jitter = position_jitterdodge(
+        jitter_width=0.2, dodge_width=0.8, random_state=0
+    )
+    dodge = position_dodge(width=0.8)
+    p = (
+        ggplot(df, aes(x="model", color="group", group="group"))
+        + geom_point(aes(y="correlation"), position=jitter, size=1, alpha=0.3)
+        + geom_errorbar(
+            aes(
+                y="mean",
+                ymin="mean - (1.95 * std)",
+                ymax="mean + (1.95 * std)",
+            ),
+            data=summary,
+            color="black",
+            position=dodge,
+            width=0.5,
+            size=0.3,
+        )
+        + geom_errorbar(
+            aes(
+                y="mean",
+                ymin="mean - (1.95 * stderr)",
+                ymax="mean + (1.95 * stderr)",
+            ),
+            data=summary,
+            color="black",
+            position=dodge,
+            width=0.8,
+            size=0.6,
+        )
+        + labs(y="Correlation", x="Model", color="Group")
+        + theme(
+            text=element_text(family=cfg.font_family, size=cfg.font_size),
+        )
+    )
+    if filename:
+        p.save(
+            os.path.join(FIGDIR, filename),
+            width=cfg.fig_width,
+            height=cfg.fig_height,
+        )
+    else:
+        p.show()
+
+
+categories = sorted(model_corrs.model.unique(), key=int)
+cat_type = CategoricalDtype(categories=categories, ordered=True)
+model_corrs["model"] = model_corrs["model"].astype(cat_type)
+
+plot(model_corrs, f"model_comparison.{cfg.figure_ext}")
