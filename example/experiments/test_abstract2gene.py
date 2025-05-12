@@ -75,8 +75,8 @@ def plot(df: pd.DataFrame, filename: str | None = None, x_name: str = "Gene"):
         + theme(
             axis_text_x=element_text(
                 rotation=45 if n_symbols > 10 else 0,
-                ha="right",
-                rotation_mode="anchor",
+                ha="right" if n_symbols > 10 else "center",
+                rotation_mode="anchor" if n_symbols > 10 else "default",
             ),
             text=element_text(family=cfg.font_family, size=cfg.font_size),
         )
