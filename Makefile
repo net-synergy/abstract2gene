@@ -10,15 +10,12 @@ dataset:
 .PHONY: train
 train:
 	$(PYTHON) example/training/embedding_model_selection.py
-	$(PYTHON) example/training/finetune_experiments.py
-	$(PYTHON) example/training/plot_training_curve.py
-	# Further train the best performing experiment
-	# (doesn't converge by 10_000 steps).
 	$(PYTHON) example/training/finetune_experiments.py \
-		--continue_training \
-		--n_steps 10_000 \
-		--models MPNet \
+		--models MPNet PubMedNCL
+	$(PYTHON) example/training/finetune_experiments.py \
+		--n_steps 20_000 \
 		--experiments 5
+	$(PYTHON) example/training/plot_training_curve.py
 	$(PYTHON) example/training/label_embedding_similarity.py
 	$(PYTHON) example/training/train_abstract2gene.py
 
@@ -29,9 +26,9 @@ upload:
 .PHONY: experiments
 experiments:
 	$(PYTHON) example/experiments/test_abstract2gene.py
-	$(PYTHON) example/experiments/reference_similarity.py
 	$(PYTHON) example/experiments/differential_expression.py
 	$(PYTHON) example/experiments/predict_genes_in_behavioral_studies.py
+	$(PYTHON) example/analyze_citation_network.py
 
 .PHONY: clean
 clean:

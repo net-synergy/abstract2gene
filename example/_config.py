@@ -29,16 +29,15 @@ EMBEDDING_TRAIN_FILES = [
     _file_template.format(archive=9, f_idx=i, f_total=21) for i in range(10)
 ]
 A2G_TRAIN_FILES = [
-    _file_template.format(archive=9, f_idx=i, f_total=21)
-    for i in range(10, 15)
+    _file_template.format(archive=8, f_idx=i, f_total=21) for i in range(21)
 ]
 LABEL_SIMILARITY_FILES = [
-    _file_template.format(archive=8, f_idx=i, f_total=21) for i in range(2)
+    _file_template.format(archive=7, f_idx=i, f_total=21) for i in range(2)
 ]
 AD_DE_FILES = [
-    _file_template.format(archive=8, f_idx=i, f_total=21) for i in range(2, 15)
+    _file_template.format(archive=6, f_idx=i, f_total=21) for i in range(21)
 ]
-TEST_FILES = [_file_template.format(archive=7, f_idx=0, f_total=21)]
+TEST_FILES = [_file_template.format(archive=5, f_idx=0, f_total=21)]
 
 # Default models, always available through the cfg.MODELS but only models
 # in cfg.models will be fine-tuned. If "embedding-models" set in the TOML those
