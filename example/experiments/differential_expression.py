@@ -233,7 +233,7 @@ for k, ds in ds_typed.items():
             )
         ]
 
-    for n in range(1, 9):
+    for n in range(2, 9):
         lpb = 2**n
         name = f"abstract2gene_lpb_{lpb}"
         model = a2g.model.load_from_disk(name)
@@ -353,11 +353,7 @@ for k, ds in ds_typed.items():
         + p9.ylim((-4, 5.5))
         + p9.theme(
             text=p9.element_text(family=cfg.font_family, size=cfg.font_size),
-            axis_text_x=p9.element_text(
-                rotation=45,
-                ha="right",
-                rotation_mode="anchor",
-            ),
+            axis_text_x=p9.element_text(rotation=90, ha="center"),
         )
     )
 
