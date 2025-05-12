@@ -144,7 +144,7 @@ async def results(
     results = _extract_points(points)
     for i, pt in enumerate(points):
         results[i]["genes"] = _top_preds(pt.vector, genes)
-        results[i]["abstract"] = _format_abstract(abstract)
+        results[i]["abstract"] = _format_abstract(results[i]["abstract"])
 
     return templates.TemplateResponse(
         request,
