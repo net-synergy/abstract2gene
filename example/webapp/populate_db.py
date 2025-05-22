@@ -31,18 +31,9 @@ async def main():
     model = a2g.model.load_from_disk(cfg.model_name)
     await database.init_db(client, model, cfg.collection_name)
 
-    # TEMP: Starting with small subset, add full dataset later.
-    _file_template = (
-        "data/BioCXML_{archive}/data-{f_idx:05}-of-{f_total:05}.arrow"
-    )
-    data_files = [
-        _file_template.format(archive=0, f_idx=f, f_total=20)
-        for f in range(20)
+    dataset = datasets.load_dataset(f"{cfg.hf_user}/pubtator3_abstracts")[
+        "train"
     ]
-
-    dataset = datasets.load_dataset(
-        f"{cfg.hf_user}/pubtator3_abstracts", data_files=data_files
-    )["train"]
 
     dataset = a2g.dataset.mutators.translate_to_human_orthologs(dataset)
     genes = {
