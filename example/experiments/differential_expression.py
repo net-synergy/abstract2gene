@@ -320,12 +320,12 @@ for k in ["molecular", "behavioral"]:
         )
     )
 
-    z_crit = stats.norm.ppf(1 - (ALPHA / 2))
-    sample_params["ci_low"] = sample_params["log_RR"] - (
-        sample_params["se_log_RR"] * z_crit
+    z_crit = stats.norm.ppf(1 - (ALPHA / n_genes))
+    sample_params["ci_low"] = sample_params["ln_RR"] - (
+        sample_params["se_ln_RR"] * z_crit
     )
-    sample_params["ci_high"] = sample_params["log_RR"] + (
-        sample_params["se_log_RR"] * z_crit
+    sample_params["ci_high"] = sample_params["ln_RR"] + (
+        sample_params["se_ln_RR"] * z_crit
     )
 
     mask = (sample_params["ci_low"].unstack().T > 0).any(axis=1)
