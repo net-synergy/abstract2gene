@@ -3,14 +3,11 @@ services:
   abstract2gene:
     build:
       context: .
-    ports:
-      - "${A2G_PORT:-8080}:8000"
+    ports: "${A2G_PORT:-8080}:8000"
     tty: true
     depends_on:
       - qdrant
     volumes:
-      - ./abstract2gene:/app/abstract2gene
-      - ./webapp:/app/webapp
       - ${A2G_DATA_HOME}:/root/.local/share/abstract2gene
       - ${HF_CACHE}:/root/.cache/huggingface
       - ./auth:/root/.local/share/auth
@@ -28,8 +25,6 @@ services:
 
   qdrant:
     image: qdrant/qdrant:gpu-nvidia-latest
-    ports:
-      - "6333:6333"
     environment:
       - QDRANT__STORAGE__PERFORMANCE__ASYNC_SCORER=true
     volumes:
