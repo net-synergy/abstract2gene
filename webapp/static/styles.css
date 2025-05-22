@@ -2,19 +2,31 @@ html { font-size: 2.4vw; }
 @media all and (min-width:1000px) { html { font-size: 24px; } }
 @media all and (max-width:520px) { html{ font-size: 18px; } }
 
-h1, h2, h3 {
-    font-size: 1.4rem;
+h1, h2 {
+    font-size: 1.0rem;
     margin-left: 1rem;
     font-weight: bold;
 }
 
-table {
-    margin-left: 3vw;
+h3 {
+    font-size: 1.0rem;
 }
 
 h4 {
+    font-family: 'TeX Gyre Pagella', serif;
     font-size: 1.0rem;
-    font-weight: bold;
+    font-style: italic;
+}
+
+h5 {
+    font-family: 'TeX Gyre Pagella', serif;
+    font-size: 0.75rem;
+    font-style: italic;
+    margin-top: 0.75rem;
+}
+
+table {
+    margin-left: 3vw;
 }
 
 p {

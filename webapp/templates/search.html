@@ -15,16 +15,16 @@
   <body class="background sans">
     <div class="container mt-5" style="margin-left: 3vw">
       <h1 class="text-center">Abstract2Gene</h1>
-      <h4>
+      <h3>
         Search with a custom abstract (or
         <a href="/pmid_search" style="font-size: 1rem">search by PMID</a>)
-      </h4>
+      </h3>
       <form method="POST" action="{{ url_for('search') }}">
         <div class="form-group">
           <label for="title">Title</label>
           <input
             type="text"
-            class="form-control sans"
+            class="form-control abstract"
             id="title"
             name="title"
             placeholder="Enter the title of the article"

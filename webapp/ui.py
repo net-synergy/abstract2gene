@@ -25,8 +25,10 @@ def _top_preds(predictions: list[float], genes: Gene) -> dict[str, list[str]]:
 
 def _format_abstract(abstract: str) -> str:
     return re.sub(
-        r" ([A-Z /]{4,}:)",
-        r'<p/><p class="abstract">\1',
+        r"([A-Z /]{4,}:)",
+        lambda m: r"</p><h5>"
+        + m.group(1).title()
+        + r'</h5><p class="abstract">',
         '<p class="abstract">' + abstract + "</p>",
     )
 
