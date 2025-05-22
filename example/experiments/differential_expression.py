@@ -299,8 +299,8 @@ for k in ["molecular", "behavioral"]:
         sample_params["events_other"]
         * (sample_params["events_AD"] + sample_params["non_events_AD"])
     )
-    sample_params["log_RR"] = np.log10(sample_params["relative_risk"])
-    sample_params["se_log_RR"] = np.sqrt(
+    sample_params["ln_RR"] = np.log(sample_params["relative_risk"])
+    sample_params["se_ln_RR"] = np.sqrt(
         (
             sample_params["non_events_AD"]
             / (
