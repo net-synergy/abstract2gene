@@ -158,8 +158,21 @@ def inputs(dataset: datasets.Dataset, index: np.ndarray) -> list[str]:
 
 
 def organize_predictions(
-    preds_ad: np.ndarray, preds_other: np.ndarray, label: str
+    preds_ad: np.ndarray,
+    preds_other: np.ndarray,
+    label: str,
+    prop: int | None = None,
 ) -> pd.DataFrame:
+    predictions = np.hstack([preds_ad, preds_other])
+    if prop is None:
+        # Intended for the pubtator case where values already binary.
+        thresh = 0.5
+    else:
+        loc = int(np.ceil(len(predictions) * (1 - prop))) - 1
+        thresh = np.sort(predictions)[loc]
+        log(f"Label {label} thresh: {thresh}")
+        log(f"  {sum(predictions >= thresh) / len(predictions)}")
+
     return pd.DataFrame(
         {
             "tag": np.array(
@@ -168,7 +181,7 @@ def organize_predictions(
             ),
             "label": [label] * (preds_ad.shape[0] + preds_other.shape[0]),
             "gene": np.array(symbols * (2 * n_samples)),
-            "prediction": np.hstack([preds_ad, preds_other]) > 0.5,
+            "prediction": predictions >= thresh,
         }
     )
 
@@ -192,7 +205,8 @@ de_model_idx, de_dataset_idx = zip(*de_dataset2model)
 symbols = [symbols[i] for i in de_dataset_idx]
 
 rng = np.random.default_rng(seed=seed)
-for k, ds in ds_typed.items():
+for k in ["molecular", "behavioral"]:
+    ds = ds_typed[k]
     ad_mask = np.fromiter(
         (is_ad_abstract(abstract) for abstract in ds["abstract"]),
         dtype=np.bool,
@@ -233,7 +247,13 @@ for k, ds in ds_typed.items():
             )
         ]
 
-    for n in range(2, 9):
+        p_events = (
+            model_predictions[0].prediction.sum()
+            / model_predictions[0].prediction.shape[0]
+        )
+        log(f"PubTator proportion events: {p_events}")
+
+    for n in range(1, 9):
         lpb = 2**n
         name = f"abstract2gene_lpb_{lpb}"
         model = a2g.model.load_from_disk(name)
@@ -247,6 +267,7 @@ for k, ds in ds_typed.items():
                     :, de_model_idx
                 ].flatten(),
                 f"A2G {lpb}",
+                p_events,
             )
         )
 
