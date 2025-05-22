@@ -346,13 +346,19 @@ for k in ["molecular", "behavioral"]:
 
     # For some reason RR > 1 gets cutoff unless padding with a couple lines
     # above when their are too many annotations.
-    padding = r"-\vspace{2.5em}\\" if k == "molecular" else r"\noindent"
+    padding = r"-\vspace{6em}\\"
 
     dodge_col = p9.position_dodge(width=0.8)
     p = (
         p9.ggplot(
             sample_params,
-            p9.aes(x="gene", y="log_RR", color="label", alpha="alpha"),
+            p9.aes(
+                x="gene",
+                y="ln_RR",
+                color="label",
+                alpha="alpha",
+                linetype="alpha",
+            ),
         )
         + p9.geom_hline(p9.aes(yintercept=0), color="black")
         + p9.geom_point(size=1, position=dodge_col)
@@ -362,16 +368,16 @@ for k in ["molecular", "behavioral"]:
             size=0.3,
             position=dodge_col,
         )
-        + p9.scale_alpha_discrete(range=(0.3, 1))
+        + p9.scale_alpha_discrete(range=(0.25, 1))
+        + p9.scale_linetype_manual(values=("dashed", "solid"))
         + p9.scale_color_discrete()
         + p9.labs(
             y=r"$\log \left(\textrm{Relative Risk}\right)$",
             x="Gene",
             alpha=padding + r"$\textrm{RR} > 1$\\(95\% confidence)",
+            linetype=padding + r"$\textrm{RR} > 1$\\(95\% confidence)",
             color="Annotations",
         )
-        # Based on the current results to keep axes locked between figures.
-        + p9.ylim((-4, 5.5))
         + p9.theme(
             text=p9.element_text(family=cfg.font_family, size=cfg.font_size),
             axis_text_x=p9.element_text(rotation=90, ha="center"),
