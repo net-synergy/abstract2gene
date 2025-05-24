@@ -13,11 +13,8 @@ dependencies = [
     "einops>=0.8.0",
     "flax>=0.10.2",
     "huggingface-hub>=0.27.1",
-    "igraph>=0.11.8",
-    "jax[cuda12]>=0.5.0",
     "numpy>=2.0.0",
     "optax>=0.2.4",
-    "optuna>=4.2.0",
     "orbax-checkpoint>=0.11.4",
     "pandas>=2.2.3",
     "plotnine>=0.14.5",
@@ -26,12 +23,33 @@ dependencies = [
     "scikit-misc>=0.5.1",
     "scipy>=1.15.1",
     "sentence-transformers[train]>=3.4.0",
-    "speakeasy2>=0.1.6.a.1",
     "synstore>=0.1.3",
     "tf-keras>=2.18.0",
-    "torch>=2.5.1",
     "tqdm>=4.67.1",
     "transformers>=4.46.0",
+]
+
+[project.optional-dependencies]
+cpu = [
+    "jax>=0.5.3",
+    "torch>=2.5.1",
+]
+gpu = [
+    "jax[cuda12]>=0.5.0",
+    "torch>=2.5.1",
+]
+app = [
+    "bcrypt>=4.3.0",
+    "fastapi[standard]>=0.115.11",
+    "itsdangerous>=2.2.0",
+    "qdrant-client>=1.12.1",
+]
+train = [
+    "optuna>=4.2.0",
+]
+experiment = [
+    "igraph>=0.11.8",
+    "speakeasy2>=0.1.6.a.1",
 ]
 
 [dependency-groups]
@@ -47,22 +65,31 @@ dev = [
     "python-lsp-server>=1.12.0",
 ]
 
-app = [
-    "bcrypt>=4.3.0",
-    "fastapi[standard]>=0.115.11",
-    "itsdangerous>=2.2.0",
-    "qdrant-client>=1.12.1",
-]
-
 [project.scripts]
 usergen = "example.usergen:main"
 
+[tool.uv]
+conflicts = [
+  [
+    { extra = "cpu" },
+    { extra = "gpu" }
+  ]
+]
+
 [tool.uv.sources]
 speakeasy2 = { index = "testpypi" }
+torch = [
+  { index = "torch-cpu", extra = "cpu" },
+]
 
 [[tool.uv.index]]
 name = "testpypi"
 url = "https://test.pypi.org/simple"
+explicit = true
+
+[[tool.uv.index]]
+name = "torch-cpu"
+url = "https://download.pytorch.org/whl/cpu"
 explicit = true
 
 [tool.black]

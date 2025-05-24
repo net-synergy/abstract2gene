@@ -132,7 +132,8 @@
 
       a2gEnv = python.withPackages (project.renderers.withPackages {
         inherit python;
-        groups = [ "dev" "app" ];
+        groups = [ "dev" ];
+        extras = [ "app" "gpu" "train" "experiment" ];
       });
 
       tex = pkgs.texlive.combine {

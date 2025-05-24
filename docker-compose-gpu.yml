@@ -4,7 +4,7 @@ services:
     build:
       context: .
       args:
-        EXTRA_TYPE: cpu
+        EXTRA_TYPE: gpu
     ports: "${A2G_PORT:-8080}:8000"
     tty: true
     depends_on:
@@ -17,9 +17,16 @@ services:
     environment:
       - A2G_QDRANT_URL=qdrant
       - A2G_MODE=${A2G_MODE:-run}
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
 
   qdrant:
-    image: qdrant/qdrant:latest
+    image: qdrant/qdrant:gpu-nvidia-latest
     environment:
       - QDRANT__STORAGE__PERFORMANCE__ASYNC_SCORER=true
     volumes:
