@@ -15,9 +15,12 @@ from pandas.api.types import CategoricalDtype
 
 import abstract2gene as a2g
 import example._config as cfg
+from example._logging import log, set_log
 
-seed = cfg.seeds["predict_genes_in_behavioral_studies"]
-FIGDIR = "figures/behavioral_genes"
+EXPERIMENT = "predict_genes_in_behavioral_studies"
+seed = cfg.seeds[EXPERIMENT]
+set_log(EXPERIMENT)
+FIGDIR = f"figures/{EXPERIMENT}"
 
 if not os.path.exists(FIGDIR):
     os.makedirs(FIGDIR)
@@ -33,6 +36,7 @@ parent_publications = [
 
 parent_pmids = dataset[parent_publications]["pmid"]
 reference_lists = dataset[parent_publications]["reference"]
+log(f"Number of parent publications found: {len(parent_pmids)}")
 
 dataset = dataset.with_format(
     "numpy", columns=["pmid"], output_all_columns=True
