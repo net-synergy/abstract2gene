@@ -44,7 +44,7 @@ async def main():
     if model.templates:
         indices = model.sync_indices(dataset)
         genes = {
-            k: [v[int(i)] for i in indices if i > 0] for k, v in genes.items()
+            k: [v[int(i)] for i in indices if i >= 0] for k, v in genes.items()
         }
 
     with open(
