@@ -257,7 +257,12 @@ def load_from_disk(name: str) -> Model:
     abstract_model = nnx.eval_shape(lambda: model_cls[cls_name](**metadata))
     graphdef, abstract_state = nnx.split(abstract_model)
     with ocp.StandardCheckpointer() as ckptr:
-        state = ckptr.restore(os.path.join(save_dir, "state"), abstract_state)
+        state = ckptr.restore(
+            os.path.join(save_dir, "state"),
+            jax.tree_util.tree_map(
+                lambda x: jnp.zeros(x.shape), abstract_state
+            ),
+        )
 
     model = nnx.merge(graphdef, state)
 
