@@ -48,8 +48,8 @@ MODELS = {
     "MPNet": "microsoft/mpnet-base",
     "BERT": "google-bert/bert-base-uncased",
     # Science fine-tuned models
-    "SPECTER": "sentence-transformers/allenai-specter",
-    "SPECTER2": "allenai/specter2_base",
+    "Specter": "sentence-transformers/allenai-specter",
+    "Specter2": "allenai/specter2_base",
     "SciBERT": "allenai/scibert_scivocab_uncased",
     "PubMedNCL": "malteos/PubMedNCL",
 }

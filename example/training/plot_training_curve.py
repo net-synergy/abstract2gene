@@ -204,6 +204,14 @@ def plot_all_models(df):
     cat_type = CategoricalDtype(categories=eval_types, ordered=True)
     df["eval_type"] = df["eval_type"].astype(cat_type)
 
+    df.model = df.model.transform(
+        lambda x: (
+            r"\textsc{" + x + r"}"
+            if x in ("Specter", "Specter2", "SciBERT")
+            else x
+        )
+    )
+
     return (
         p9.ggplot(df, p9.aes(x="step", y="value", color="model"))
         + p9.geom_smooth(method="loess", se=False, size=0.5)
