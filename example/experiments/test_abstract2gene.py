@@ -44,19 +44,6 @@ def plot(df: pd.DataFrame, filename: str | None = None, x_name: str = "Gene"):
     dodge = position_dodge(width=0.8)
     p = (
         ggplot(df, aes(x="symbol", color="tag"))
-        + geom_errorbar(
-            aes(
-                y="mean",
-                ymin="mean - (1.95 * std)",
-                ymax="mean + (1.95 * std)",
-                fill="tag",
-            ),
-            data=metrics,
-            color="black",
-            position=dodge,
-            width=0.5,
-            size=0.3,
-        )
         + geom_point(aes(y="score"), position=jitter, size=1, alpha=0.4)
         + geom_errorbar(
             aes(

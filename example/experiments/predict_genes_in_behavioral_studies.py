@@ -269,18 +269,6 @@ def plot(df: pd.DataFrame, filename: str | None = None):
         + geom_errorbar(
             aes(
                 y="mean",
-                ymin="mean - (1.95 * std)",
-                ymax="mean + (1.95 * std)",
-            ),
-            data=summary,
-            color="black",
-            position=dodge,
-            width=0.5,
-            size=0.3,
-        )
-        + geom_errorbar(
-            aes(
-                y="mean",
                 ymin="mean - (1.95 * stderr)",
                 ymax="mean + (1.95 * stderr)",
             ),
