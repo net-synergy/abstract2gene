@@ -75,6 +75,7 @@ seeds = {
     "reference_similarity": 70,
     "predict_genes_in_behavioral_studies": 80,
     "differential_expression": 90,
+    "most_prevalent_label_embedding_similarity": 100,
 }
 
 hf_user = conf.get("hf_user", hf_user)
