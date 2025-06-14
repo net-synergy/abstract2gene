@@ -27,6 +27,8 @@ import jax
 import matplotlib.colors as colors
 import matplotlib.pyplot as plt
 import numpy as np
+import pandas as pd
+import plotnine as p9
 import speakeasy2 as se2
 from sentence_transformers import SentenceTransformer
 
@@ -99,7 +101,7 @@ def correlate(features: np.ndarray) -> np.ndarray:
     return features @ features.T
 
 
-def plot(corrs, symbols, ground_truth, name):
+def plot_heatmap(corrs, symbols, ground_truth, name):
     labels = [chr(65 + i) + r". \emph{" + k + "}" for i, k in enumerate(corrs)]
     fig, axes = plt.subplots(
         1, 2, figsize=(cfg.fig_width, cfg.fig_width / 2.4)
@@ -140,6 +142,66 @@ def plot(corrs, symbols, ground_truth, name):
     )
 
     plt.savefig(os.path.join(FIGDIR, f"{name}.{cfg.figure_ext}"))
+
+
+def plot_boxplots(corrs, symbols, ground_truth, name):
+    membership = ground_truth.membership
+    n_samples = list(corrs.values())[0].shape[0]
+
+    for k in corrs:
+        corrs[k] = corrs[k] - corrs[k].mean(axis=(0, 1))
+        corrs[k] = corrs[k] / corrs[k].std(axis=(0, 1))
+
+    fr = [
+        symbols[membership[i]]
+        for j in range(n_samples)
+        for i in range(n_samples)
+        for _ in corrs
+        if i != j
+    ]
+
+    to = [
+        symbols[membership[j]]
+        for j in range(n_samples)
+        for i in range(n_samples)
+        for _ in corrs
+        if i != j
+    ]
+
+    score = [
+        model_corr[i, j]
+        for j in range(n_samples)
+        for i in range(n_samples)
+        for model_corr in corrs.values()
+        if i != j
+    ]
+
+    model = [k for _ in range(n_samples * (n_samples - 1)) for k in corrs]
+    same = [head == tail for head, tail in zip(fr, to)]
+
+    df = pd.DataFrame(
+        dict(
+            zip(
+                ["from", "to", "model", "same", "score"],
+                [fr, to, model, same, score],
+            )
+        )
+    )
+
+    dodge = p9.position_dodge(width=0.9)
+    p = (
+        p9.ggplot(df, p9.aes(x="model", y="score", fill="same"))
+        + p9.geom_boxplot(position=dodge)
+        + p9.labs(x="Model", y="Correlation (Normalized)", fill="Same Gene")
+        + p9.theme(
+            text=p9.element_text(family=cfg.font_family, size=cfg.font_size),
+        )
+    )
+    p.save(
+        os.path.join(FIGDIR, f"{name}_boxplot.{cfg.figure_ext}"),
+        width=cfg.fig_width,
+        height=cfg.fig_height,
+    )
 
 
 ## Load dataset
@@ -218,9 +280,11 @@ for k in [1, 5]:
         ]
     }
 
-    plot(
+    plot_heatmap(
         corrs,
         sym_k,
         ground_truth,
         f"{ORIGINAL}_k{k}",
     )
+
+    plot_boxplots(corrs, sym_k, ground_truth, f"{ORIGINAL}_k{k}")
