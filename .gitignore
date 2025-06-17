@@ -1,7 +1,6 @@
 __pycache__/
 figures/
 example_results/
-*.png
 *.tsv
 tmp/
 qdrant/
