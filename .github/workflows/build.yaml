@@ -1,0 +1,31 @@
+name: Package python packages
+
+on:
+  - workflow_call
+
+jobs:
+  build-packages:
+    runs-on: ubuntu-latest
+    env:
+      python-version: "3.12"
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up uv
+        run: pipx install uv
+
+      - name: Set up python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.python-version }}
+          cache: "uv"
+
+      - name: Build wheel and sdist
+        run: uv build
+
+      - name: Upload packages
+        uses: actions/upload-artifact@v4
+        with:
+          name: pubnet-${{ github.sha }}
+          path: dist/*
