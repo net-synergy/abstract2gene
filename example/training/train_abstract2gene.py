@@ -34,6 +34,10 @@ dataset = datasets.load_dataset(
     data_files=cfg.A2G_TRAIN_FILES,
 )["train"]
 
+log(f"Publications in subset: {len(dataset)}")
+n_molecular_publications = sum((len(gene) > 0) for gene in dataset["gene"])
+log(f"Molecular publications in subset: {n_molecular_publications}")
+
 log("Converting genes to human orthologs:")
 log("  Before conversion:")
 log(f"    {len(dataset.features["gene"].feature.names)} unique genes")
@@ -45,17 +49,24 @@ log(f"    {len([g for gs in dataset["gene"] for g in gs])} total genes")
 log("")
 
 dataset = mutators.augment_labels(dataset, "gene", 0.2, seed)
+symbols = mutators.get_gene_symbols(dataset)
 
 genes = np.bincount(jax.tree.leaves(dataset["gene"]))
 mask = genes >= 8
 gene_idx = np.arange(len(genes))[mask]
 
-old_gene_feats = dataset.features["gene"].feature
-
 dataset = dataset.filter(
     lambda example: any(np.isin(example["gene"], gene_idx)),
     num_proc=cfg.max_cpu,
 )
+
+log("After dropping rare genes:")
+log(f"  {sum(mask)} unique genes")
+log(f"  {len([g for gs in dataset["gene"] for g in gs])} total genes")
+log(
+    f"  {np.max(genes)} ({symbols[np.argmax(genes)]}) max number of occurrences"
+)
+log("")
 
 dataset = mutators.mask_abstract(
     dataset, "gene", permute_prob=0.25, max_cpu=cfg.max_cpu, seed=seed + 1
