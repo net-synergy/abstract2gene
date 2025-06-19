@@ -40,3 +40,4 @@ clean-dist: clean
 	rm -rf logs
 	rm -rf figures
 	rm -rf results
+	rm -rf dist
