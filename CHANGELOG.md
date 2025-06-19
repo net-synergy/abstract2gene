@@ -11,6 +11,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Automated releases using github actions
 - Gene distribution figure
+- Save model testing results in tables
+
+### Fixed
+
+- Indexing mistake during model testing
 
 ## [0.1.0] - 2025-06-17
 

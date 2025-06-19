@@ -165,7 +165,7 @@ def test(
 
         Uses the template indices to sync with output templates.
         """
-        return np.isin(label_indices[label_indices >= 0], labels)
+        return np.isin(label_indices, labels)
 
     if model.templates is None:
         raise ValueError("Templates most be attached to model before testing.")
@@ -195,10 +195,12 @@ def test(
             )
         ]
 
-        batch_regression.append(model.predict(samples))
+        batch_regression.append(model.predict(samples)[:, label_indices >= 0])
 
+    label_indices = label_indices[label_indices >= 0]
     regression = np.vstack(batch_regression)
     labels = np.vstack([multihot(labs) for labs in mini_dataset[label_name]])
+    sample_pmids = np.asarray(mini_dataset["pmid"])
 
     preds = regression > 0.5
 
@@ -237,6 +239,7 @@ def test(
     selected = rng.choice(labels.shape[1], n_labels)
 
     scores = np.zeros((2 * n_labels * n_samples,))
+    pmids = np.zeros((2 * n_labels * n_samples,), like=sample_pmids)
     tags = np.tile(
         np.concat(
             (
@@ -256,10 +259,18 @@ def test(
     last = 0
     for label in selected:
         match = regression[labels[:, label], label]
+        pmid_match = sample_pmids[labels[:, label]]
         differ = regression[jnp.logical_not(labels[:, label]), label]
-        scores[last : (last + n_samples)] = rng.permuted(match)[:n_samples]
+        pmid_differ = sample_pmids[jnp.logical_not(labels[:, label])]
+        idx = rng.permuted(np.arange(len(match)))[:n_samples]
+        scores[last : (last + n_samples)] = match[idx]
+        pmids[last : (last + n_samples)] = pmid_match[idx]
         last += n_samples
-        scores[last : (last + n_samples)] = rng.permuted(differ)[:n_samples]
+        idx = rng.permuted(np.arange(len(match)))[:n_samples]
+        scores[last : (last + n_samples)] = differ[idx]
+        pmids[last : (last + n_samples)] = pmid_differ[idx]
         last += n_samples
 
-    return pd.DataFrame({"score": scores, "tag": tags, "symbol": label_names})
+    return pd.DataFrame(
+        {"pmid": pmids, "score": scores, "tag": tags, "symbol": label_names}
+    )

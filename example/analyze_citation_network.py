@@ -1,4 +1,3 @@
-from functools import partial
 from time import time
 
 import datasets

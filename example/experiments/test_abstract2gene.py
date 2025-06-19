@@ -10,8 +10,12 @@ from pandas.api.types import CategoricalDtype
 import abstract2gene as a2g
 import example._config as cfg
 from abstract2gene.dataset import mutators
+from example._logging import log, set_log
 
-FIGDIR = "figures/model_comparison"
+EXPERIMENT = "model_comparison"
+FIGDIR = f"figures/{EXPERIMENT}"
+
+set_log(EXPERIMENT)
 
 if not os.path.exists(FIGDIR):
     os.makedirs(FIGDIR)
@@ -92,6 +96,7 @@ for name in [f"abstract2gene_lpb_{2**n}" for n in range(1, 9)]:
     )
     model_results[name] = df
     plot(df, f"{name}.{cfg.figure_ext}")
+    df.to_csv(f"results/{EXPERIMENT}/samples_{name}.tsv", sep="\t")
 
 for name, results in model_results.items():
     descriptor = name.split("_")[-1]

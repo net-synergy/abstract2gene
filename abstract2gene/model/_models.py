@@ -125,7 +125,7 @@ class Model(nnx.Module):
         in_dataset = np.isin(temp_names, ds_names)
         missing_count = 0
 
-        indices = np.zeros(temp_names.shape[0])
+        indices = np.zeros((temp_names.shape[0],), dtype=int)
         for i in range(temp_names.shape[0]):
             if in_dataset[i]:
                 indices[i] = name2index(temp_names[i])
