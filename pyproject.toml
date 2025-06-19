@@ -3,6 +3,7 @@ name = "abstract2gene"
 version = "0.1.0"
 description = "Classify abstracts with gene annotations"
 license = "MIT"
+readme = "README.md"
 repository = "https://github.com/net-synergy/abstract2gene"
 authors = [{name = "David Connell", email = "davidconnell12@gmail.com"}]
 packages = [{ include = "abstract2gene" }, { include = "webapp"}]
