@@ -10,6 +10,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 - Automated releases using github actions
+- Gene distribution figure
 
 ## [0.1.0] - 2025-06-17
 
