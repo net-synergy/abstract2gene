@@ -9,6 +9,7 @@ from qdrant_client import AsyncQdrantClient
 from qdrant_client.models import (
     FieldCondition,
     Filter,
+    MatchText,
     Range,
     ScoredPoint,
     ValuesCount,
@@ -74,10 +75,11 @@ async def search_with_abstract(
 ) -> list[ScoredPoint]:
     """Find publications with similar genetic components to an abstract."""
     query_filter = query_filters(year, behavioral, molecular)
+    title_filter = [FieldCondition(key="title", match=MatchText(text=title))]
     return await client.search(
         collection_name=collection_name,
         query_vector=prediction,
-        query_filter=Filter(must=query_filter),
+        query_filter=Filter(must=query_filter, must_not=title_filter),
         with_payload=True,
         with_vectors=True,
         limit=cfg.results_per_page,
