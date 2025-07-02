@@ -182,6 +182,7 @@ for n in range(1, 9):
         + p9.labs(fill="Group", color="Group", x="Correlation", y="Count")
         + p9.theme(
             text=p9.element_text(family=cfg.font_family, size=cfg.font_size),
+            legend_position="bottom",
         )
     )
     p.save(
@@ -225,6 +226,7 @@ for n in range(1, 9):
         )
         + p9.theme(
             text=p9.element_text(family=cfg.font_family, size=cfg.font_size),
+            legend_position="bottom",
         )
     )
     p.save(
@@ -247,7 +249,6 @@ def plot(df: pd.DataFrame, filename: str | None = None):
         position_dodge,
         position_jitterdodge,
         theme,
-        ylim,
     )
 
     def stderr(x):
@@ -281,6 +282,7 @@ def plot(df: pd.DataFrame, filename: str | None = None):
         + labs(y="Correlation", x="Model", color="Group")
         + theme(
             text=element_text(family=cfg.font_family, size=cfg.font_size),
+            legend_position="bottom",
         )
     )
     if filename:
@@ -296,5 +298,6 @@ def plot(df: pd.DataFrame, filename: str | None = None):
 categories = sorted(model_corrs.model.unique(), key=int)
 cat_type = CategoricalDtype(categories=categories, ordered=True)
 model_corrs["model"] = model_corrs["model"].astype(cat_type)
+model_corrs.to_csv(f"results/{EXPERIMENT}/correlations.tsv", sep="\t")
 
 plot(model_corrs, f"model_comparison.{cfg.figure_ext}")

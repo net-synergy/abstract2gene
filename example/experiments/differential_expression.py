@@ -327,6 +327,7 @@ for k in ["molecular", "behavioral"]:
     sample_params["ci_high"] = sample_params["ln_RR"] + (
         sample_params["se_ln_RR"] * z_crit
     )
+    sample_params.to_csv(f"results/{EXPERIMENT}/events_{k}.tsv", sep="\t")
 
     mask = (sample_params["ci_low"].unstack().T > 0).any(axis=1)
     sample_params = sample_params.reset_index()

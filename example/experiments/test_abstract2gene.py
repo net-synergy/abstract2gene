@@ -42,6 +42,7 @@ def plot(df: pd.DataFrame, filename: str | None = None, x_name: str = "Gene"):
         ["mean", "std", stderr]
     )
 
+    df["tag"] = df.tag.map(lambda x: x.title())
     jitter = position_jitterdodge(
         jitter_width=0.2, dodge_width=0.8, random_state=0
     )
@@ -62,7 +63,7 @@ def plot(df: pd.DataFrame, filename: str | None = None, x_name: str = "Gene"):
             width=0.8,
             size=0.6,
         )
-        + labs(y="Similarity", x=x_name, color="Tag")
+        + labs(y="Similarity", x=x_name, color="Annotation")
         + theme(
             axis_text_x=element_text(
                 rotation=45 if n_symbols > 10 else 0,
@@ -70,6 +71,7 @@ def plot(df: pd.DataFrame, filename: str | None = None, x_name: str = "Gene"):
                 rotation_mode="anchor" if n_symbols > 10 else "default",
             ),
             text=element_text(family=cfg.font_family, size=cfg.font_size),
+            legend_position="bottom",
         )
     )
     if filename:
