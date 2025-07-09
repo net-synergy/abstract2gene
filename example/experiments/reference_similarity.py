@@ -1,3 +1,4 @@
+import argparse
 import os
 
 import datasets
@@ -5,31 +6,69 @@ import numpy as np
 import pandas as pd
 import plotnine as p9
 import speakeasy2 as se2
+from pandas.api.types import CategoricalDtype
 
 import abstract2gene as a2g
 import example._config as cfg
 
 EXPERIMENT = "reference_similarity"
-N_PUBLICATIONS = 10
 FIGDIR = f"figures/{EXPERIMENT}"
-MODEL = "abstract2gene_lpb_16"
-k = 5
 
 seed = cfg.seeds[EXPERIMENT]
 
 if not os.path.exists(FIGDIR):
     os.makedirs(FIGDIR)
 
-model = a2g.model.load_from_disk(MODEL)
+k = 5
+lpb = 64
+n_publications = 10
+weighted = False
+
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser()
+    parser.add_argument(
+        "-k",
+        default=k,
+        type=int,
+        help="Number of edges in K nearest neighbors graph",
+    )
+    parser.add_argument(
+        "--lpb",
+        default=lpb,
+        type=int,
+        help="Labels per batch",
+    )
+    parser.add_argument(
+        "--weighted",
+        default=weighted,
+        type=bool,
+        help="Whether KNN should be weighted",
+    )
+    parser.add_argument(
+        "--n_publications",
+        default=n_publications,
+        type=int,
+        help="Number of parent publications",
+    )
+
+    args = parser.parse_args()
+
+    lpb = args.lpb
+    n_publications = args.n_publications
+    weighted = args.weighted
+    k = args.k
+
+model_name = f"abstract2gene_lpb_{lpb}"
+model = a2g.model.load_from_disk(model_name)
 dataset = datasets.load_dataset(f"{cfg.hf_user}/pubtator3_abstracts")["train"]
 
 rng = np.random.default_rng(seed=seed)
 parent_publications = [
     int(pub)
-    for pub in rng.integers(0, len(dataset), N_PUBLICATIONS * 10)
+    for pub in rng.integers(0, len(dataset), n_publications * 10)
     if len(dataset[int(pub)]["reference"]) > 0
     and len(dataset[int(pub)]["gene"]) > 0
-][:N_PUBLICATIONS]
+][:n_publications]
 
 reference_lists = dataset[parent_publications]["reference"]
 
@@ -48,8 +87,7 @@ indices = [
     for ref_list in reference_lists
 ]
 
-# In case any reference IDs are not in the dataset. A check for the current
-# random seed shows all this analysis' references are in the dataset.
+# In case any reference IDs are not in the dataset.
 #
 # Can compare number of references before and after:
 #   print([len(ref_list) for ref_list in reference_lists])
@@ -57,23 +95,83 @@ indices = [
     [i for i, ref in zip(ref_indices, ref_list) if dataset[i]["pmid"] == ref]
     for ref_indices, ref_list in zip(indices, reference_lists)
 ]
-ground_truth = [
-    i for i, ref_list in enumerate(reference_lists) for _ in ref_list
-]
+ground_truth = [i for i, ref_list in enumerate(indices) for _ in ref_list]
 ref_ds = dataset.select([i for ref_indices in indices for i in ref_indices])
-inputs = [
-    title + "[SEP]" + abstract
-    for title, abstract in zip(ref_ds["title"], ref_ds["abstract"])
+
+ref_inputs = [
+    example["title"] + "[SEP]" + example["abstract"] for example in ref_ds
 ]
 
-regression = np.array(model.predict(inputs))
-regression = regression / (np.linalg.norm(regression, axis=1, keepdims=True))
-corr = regression @ regression.T
+parent_inputs = [
+    example["title"] + "[SEP]" + example["abstract"]
+    for example in dataset.select(parent_publications)
+]
+
+ref_predictions = np.array(model.predict(ref_inputs))
+ref_predictions = ref_predictions / (
+    np.linalg.norm(ref_predictions, axis=1, keepdims=True)
+)
+
+parent_predictions = np.array(model.predict(parent_inputs))
+parent_predictions = parent_predictions / (
+    np.linalg.norm(parent_predictions, axis=1, keepdims=True)
+)
+cited_by = [
+    dataset[parent_publications[cluster]]["pmid"] for cluster in ground_truth
+]
+
+corr = parent_predictions @ ref_predictions.T
+corr -= corr.min()
+corr /= corr.max()
+df = pd.DataFrame(
+    {
+        "cited_by": cited_by,
+        "closest": [
+            dataset[parent_publications[cluster]]["pmid"]
+            for cluster in corr.argmax(axis=0)
+        ],
+        "distance": 1 - corr.max(axis=0),
+    }
+)
+
+df.cited_by = df.cited_by.transform(str)
+df.closest = df.closest.transform(str)
+
+categories = df.closest.unique()
+categories = sorted(categories, reverse=True)
+cat_type = CategoricalDtype(categories=categories, ordered=True)
+df.closest = df.closest.astype(cat_type)
+
+p = (
+    p9.ggplot(df, p9.aes(x="distance", y="closest", color="cited_by"))
+    + p9.geom_point(size=4)
+    + p9.labs(x="Distance", y="Closest parent", color="Cited by")
+    + p9.theme(
+        text=p9.element_text(family=cfg.font_family, size=cfg.font_size),
+        axis_text_y=p9.element_text(
+            rotation=-45,
+            ha="right",
+            rotation_mode="anchor",
+        ),
+    )
+)
+p.save(
+    os.path.join(FIGDIR, f"closest_parent_{model_name}.{cfg.figure_ext}"),
+    width=cfg.fig_width,
+    height=cfg.fig_height,
+)
+
+corr = ref_predictions @ ref_predictions.T
 np.fill_diagonal(corr, 0)
 
-graph = se2.knn_graph(corr, k)
+graph = se2.knn_graph(corr, k, is_weighted=weighted) if k else corr
 clusters = se2.cluster(graph, subcluster=2, seed=seed + 1)
-ordering = se2.order_nodes(corr, clusters)
+
+if not k:
+    graph = se2.knn_graph(graph, 3)
+
+k = str(k) + "_weighted" if weighted else str(k)
+ordering = se2.order_nodes(graph, clusters)
 
 comm_dict = [
     {
@@ -113,7 +211,7 @@ p = (
     )
 )
 p.save(
-    os.path.join(FIGDIR, f"cluster_dist_{MODEL}_{k}.{cfg.figure_ext}"),
+    os.path.join(FIGDIR, f"cluster_dist_{model_name}_{k}.{cfg.figure_ext}"),
     width=cfg.fig_width,
     height=cfg.fig_height,
 )
@@ -132,7 +230,7 @@ p = (
         color="Cited by",
         fill="Cited by",
         # Otherwise "Type" gets cutoff for some reason.
-        alpha=r"-\\Type",
+        alpha=r"-\\[2em]Type",
     )
     + p9.theme(
         text=p9.element_text(family=cfg.font_family, size=cfg.font_size),
@@ -141,7 +239,7 @@ p = (
 p.save(
     os.path.join(
         FIGDIR,
-        f"cluster_dist_highlight_molecular_{MODEL}_{k}.{cfg.figure_ext}",
+        f"cluster_dist_highlight_molecular_{model_name}_{k}.{cfg.figure_ext}",
     ),
     width=cfg.fig_width,
     height=cfg.fig_height,
@@ -185,7 +283,7 @@ p = (
     )
 )
 p.save(
-    os.path.join(FIGDIR, f"parent_gene_dist_{MODEL}.{cfg.figure_ext}"),
+    os.path.join(FIGDIR, f"parent_gene_dist_{model_name}.{cfg.figure_ext}"),
     width=cfg.fig_width,
     height=cfg.fig_height,
 )
