@@ -5,6 +5,7 @@ from typing import Any
 
 import datasets
 from qdrant_client import AsyncQdrantClient
+from qdrant_client.http.exceptions import ResponseHandlingException
 from qdrant_client.models import Distance, PointStruct, VectorParams
 from tqdm import tqdm
 
@@ -50,22 +51,27 @@ async def store_publications(
     client: AsyncQdrantClient,
     dataset: datasets,
     model: a2g.model.Model,
+    symbols: list[str],
     collection_name: str,
 ):
     """Add publications from a dataset to the vector collection."""
-    dataset = dataset.map(
-        _generate_points,
-        fn_kwargs={"model": model},
-        batched=True,
-        batch_size=1000,
-        desc="Predicting genes",
-    )
 
-    batch_size = 200
-    for i in tqdm(range(0, len(dataset), batch_size)):
     def idx2gene(indices: list[int]) -> list[str]:
         return [symbols[idx] for idx in indices]
+
+    batch_size = 100000
+    mini_batch_size = 200
+    start = 0
+    for i in tqdm(range(start, len(dataset), batch_size)):
         fin = min(i + batch_size, len(dataset))
+        ds = dataset.select(range(i, fin)).map(
+            _generate_points,
+            fn_kwargs={"model": model},
+            batched=True,
+            batch_size=1000,
+            desc="Predicting genes",
+        )
+
         points = [
             PointStruct(
                 id=example["pmid"],
@@ -78,14 +84,20 @@ async def store_publications(
                     "reference": example["reference"],
                 },
             )
-            for example in dataset.select(range(i, fin))
+            for example in ds
         ]
 
-        await client.upsert(
-            collection_name=collection_name,
-            wait=False,
-            points=points,
-        )
+        for j in range(0, len(ds), mini_batch_size):
+            fjn = min(j + mini_batch_size, len(ds))
+
+            try:
+                await client.upsert(
+                    collection_name=collection_name,
+                    wait=False,
+                    points=points[j:fjn],
+                )
+            except ResponseHandlingException:
+                continue
 
 
 async def store_user_abstracts(

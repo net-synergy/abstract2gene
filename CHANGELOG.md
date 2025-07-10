@@ -13,6 +13,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Gene distribution figure
 - Save model testing results in tables
 
+### Change
+
+- Save progress throughout database generation
+
 ### Fixed
 
 - Indexing mistake during model testing
