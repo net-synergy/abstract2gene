@@ -12,6 +12,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Automated releases using github actions
 - Gene distribution figure
 - Save model testing results in tables
+- Show PubTator3 genes in search engine results to page
+- Allow exclusion of genes from the results
 
 ### Change
 
