@@ -1,6 +1,6 @@
 [project]
 name = "abstract2gene"
-version = "0.1.0"
+version = "0.1.1"
 description = "Classify abstracts with gene annotations"
 license = "MIT"
 readme = "README.md"
