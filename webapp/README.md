@@ -35,10 +35,15 @@ labels_per_batch = 16
 min_genes_displayed = 5
 gene_thresh = 0.5
 results_per_page = 20
+excluded_genes = ["CA1", "EP300", "ELAVL2"]
 
 [auth]
 enabled = true
 ```
+
+Excluded genes: CA1 gets mixed up with the CA1 region of the hippocampus, EP300 is also referred to by P300 which gets mixed up with the event related potential component, and ELAVL2 is also referred to by Hub/Hubs which gets mixed up with graph hubs.
+For excluded genes you must pass in the main symbol used by PubMed.
+The easiest way to find the right symbol is to search for the gene on [NCBI](https://www.ncbi.nlm.nih.gov/gene/).
 
 ### env
 

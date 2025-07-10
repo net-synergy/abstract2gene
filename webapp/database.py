@@ -63,6 +63,8 @@ async def store_publications(
 
     batch_size = 200
     for i in tqdm(range(0, len(dataset), batch_size)):
+    def idx2gene(indices: list[int]) -> list[str]:
+        return [symbols[idx] for idx in indices]
         fin = min(i + batch_size, len(dataset))
         points = [
             PointStruct(
@@ -72,7 +74,7 @@ async def store_publications(
                     "year": example["year"],
                     "title": example["title"],
                     "abstract": example["abstract"],
-                    "pubtator3_genes": example["gene"],
+                    "pubtator3_genes": idx2gene(example["gene"]),
                     "reference": example["reference"],
                 },
             )

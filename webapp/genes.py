@@ -10,14 +10,27 @@ Gene: TypeAlias = dict[str, list[str]]
 
 
 def top_predictions(
-    predictions: list[float], genes: Gene, k: int, p: float
+    predictions: list[float], genes: Gene, k: int, p: float, exclude: list[str]
 ) -> dict[str, list[str]]:
     """Find the top highest predicted genes.
 
     Returns all genes with predictions greater than p or a minimum of k genes
     if less than k genes have a prediction greater than p.
     """
-    preds = np.asarray(predictions)
+    if exclude:
+        predictions = [
+            p for i, p in enumerate(predictions) if i not in genes["missing"]
+        ]
+
+        preds = np.asarray(
+            [
+                p if genes["symbol"][i] not in exclude else -0.1
+                for i, p in enumerate(predictions)
+            ]
+        )
+    else:
+        preds = np.asarray(predictions)
+
     indices = np.argsort(preds)[::-1]
 
     if sum(preds > p) < k:

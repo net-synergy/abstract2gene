@@ -30,6 +30,7 @@ if "ui" in conf:
     min_genes = ui.get("min_genes_displayed", min_genes)
     gene_thresh = ui.get("gene_thresh", gene_thresh)
     results_per_page = ui.get("results_per_page", results_per_page)
+    excluded_genes = ui.get("excluded_genes", [])
 
 if "auth" in conf:
     use_auth = conf["auth"].get("enabled", use_auth)

@@ -15,6 +15,7 @@ import os
 import sys
 
 import datasets
+import numpy as np
 
 import abstract2gene as a2g
 import webapp.config as cfg
@@ -41,20 +42,22 @@ async def main():
         "entrez_id": dataset.features["gene"].feature.names,
     }
 
+
+    await database.store_publications(
+        client, dataset, model, genes["symbol"], cfg.collection_name
+    )
+
     if model.templates:
         indices = model.sync_indices(dataset)
         genes = {
             k: [v[int(i)] for i in indices if i >= 0] for k, v in genes.items()
         }
+        genes["missing"] = np.arange(len(indices))[indices < 0]
 
     with open(
         os.path.join(model_path(cfg.model_name), "genes.json"), "w"
     ) as js:
         json.dump(genes, js)
-
-    await database.store_publications(
-        client, dataset, model, cfg.collection_name
-    )
 
 
 asyncio.run(main())

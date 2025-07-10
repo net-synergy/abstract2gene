@@ -19,7 +19,11 @@ templates = Jinja2Templates(directory="webapp/templates")
 
 def _top_preds(predictions: list[float], genes: Gene) -> dict[str, list[str]]:
     return top_predictions(
-        predictions, genes, k=cfg.min_genes, p=cfg.gene_thresh
+        predictions,
+        genes,
+        k=cfg.min_genes,
+        p=cfg.gene_thresh,
+        exclude=cfg.excluded_genes,
     )
 
 
@@ -61,11 +65,11 @@ def pmid_search_page(request: Request, min_year: int, n_publications: int):
     )
 
 
-def _extract_points(points, scores=None):
+def _extract_points(points, genes, scores=None):
     if not scores:
         scores = [None] * len(points)
 
-    return [
+    results = [
         {
             k: (
                 point.id
@@ -93,6 +97,17 @@ def _extract_points(points, scores=None):
         for point, score in zip(points, scores)
         if point.payload
     ]
+
+    for i, pt in enumerate(points):
+        results[i]["genes"] = _top_preds(pt.vector, genes)
+        results[i]["abstract"] = _format_abstract(results[i]["abstract"])
+        results[i]["pubtator3_genes"] = [
+            g
+            for g in results[i]["pubtator3_genes"]
+            if g not in cfg.excluded_genes
+        ]
+
+    return results
 
 
 async def results(
@@ -143,11 +158,7 @@ async def results(
 
     top_genes = _top_preds(prediction, genes)
 
-    results = _extract_points(points)
-    for i, pt in enumerate(points):
-        results[i]["genes"] = _top_preds(pt.vector, genes)
-        results[i]["abstract"] = _format_abstract(results[i]["abstract"])
-
+    results = _extract_points(points, genes)
     return templates.TemplateResponse(
         request,
         name="a2g_results.html",
@@ -226,11 +237,7 @@ async def search_pmid(
     )
     last_page = (page * cfg.results_per_page) >= n_points.count
 
-    results = _extract_points(points)
-    for i, pt in enumerate(points):
-        results[i]["genes"] = _top_preds(pt.vector, genes)
-        results[i]["abstract"] = _format_abstract(results[i]["abstract"])
-
+    results = _extract_points(points, genes)
     parent = {
         "title": main_point.payload["title"],
         "abstract": _format_abstract(main_point.payload["abstract"]),
